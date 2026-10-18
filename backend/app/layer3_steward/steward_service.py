@@ -83,36 +83,67 @@ class StewardService:
         })
 
         model_id = settings.bedrock_model_id
+        text = ""
 
-        # Format request payload according to provider model family
-        if "anthropic.claude" in model_id:
-            body = json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "temperature": 0.1,
-                "system": prompt_system,
-                "messages": [{"role": "user", "content": user_content}]
-            })
-        else:
-            # Generic / Titan fallback format
-            body = json.dumps({
-                "inputText": f"{prompt_system}\n\nUser Data: {user_content}",
-                "textGenerationConfig": {"maxTokenCount": 1000, "temperature": 0.1}
-            })
+        # 1. Try modern Amazon Bedrock Converse API (Universal across Amazon Nova, Titan, Claude)
+        try:
+            response = client.converse(
+                modelId=model_id,
+                system=[{"text": prompt_system}],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"text": f"Incident Data:\n{user_content}"}],
+                    }
+                ],
+                inferenceConfig={
+                    "maxTokens": 1000,
+                    "temperature": 0.1,
+                },
+            )
+            text = response["output"]["message"]["content"][0]["text"]
+        except Exception as conv_err:
+            logger.info(f"Converse API invocation yielded ({conv_err}); falling back to invoke_model")
+            # 2. Fallback to invoke_model for specific model families
+            if "nova" in model_id:
+                body = json.dumps({
+                    "system": [{"text": prompt_system}],
+                    "messages": [{"role": "user", "content": [{"text": user_content}]}],
+                    "inferenceConfig": {"maxTokens": 1000, "temperature": 0.1}
+                })
+                resp = client.invoke_model(modelId=model_id, contentType="application/json", accept="application/json", body=body)
+                resp_json = json.loads(resp["body"].read())
+                text = resp_json.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
+            elif "anthropic.claude" in model_id:
+                body = json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 1000,
+                    "temperature": 0.1,
+                    "system": prompt_system,
+                    "messages": [{"role": "user", "content": user_content}]
+                })
+                resp = client.invoke_model(modelId=model_id, contentType="application/json", accept="application/json", body=body)
+                resp_json = json.loads(resp["body"].read())
+                text = resp_json["content"][0]["text"]
+            else:
+                body = json.dumps({
+                    "inputText": f"{prompt_system}\n\nUser Data: {user_content}",
+                    "textGenerationConfig": {"maxTokenCount": 1000, "temperature": 0.1}
+                })
+                resp = client.invoke_model(modelId=model_id, contentType="application/json", accept="application/json", body=body)
+                resp_json = json.loads(resp["body"].read())
+                text = resp_json.get("results", [{}])[0].get("outputText", "{}")
 
-        response = client.invoke_model(
-            modelId=model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=body,
-        )
-
-        response_body = json.loads(response["body"].read())
-
-        if "anthropic.claude" in model_id:
-            text = response_body["content"][0]["text"]
-        else:
-            text = response_body.get("results", [{}])[0].get("outputText", "{}")
+        # Robust JSON extraction from LLM response (strips markdown code blocks if present)
+        text = text.strip()
+        if "```json" in text:
+            text = text.split("```json", 1)[1].split("```", 1)[0].strip()
+        elif "```" in text:
+            text = text.split("```", 1)[1].split("```", 1)[0].strip()
+        elif "{" in text and "}" in text:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            text = text[start:end]
 
         parsed = json.loads(text)
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

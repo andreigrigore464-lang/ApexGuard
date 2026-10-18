@@ -34,7 +34,7 @@ Telemetry CSVs (Car A & Car B) + Surveyed Track Geometry
  ┌─────────────────────────────────────────────────────────┐
  │ Layer 3: Judicial Steward Bulletin Generator (~1.5s)   │
  │  • Formal FIA Stewards' Decision Document               │
- │  • Cloud: Amazon Bedrock judicial synthesis             │
+ │  • Cloud: Amazon Bedrock (Amazon Nova Lite / Titan)     │
  │  • Offline: Local dynamic template engine fallback      │
  └─────────────────────────────────────────────────────────┘
 ```

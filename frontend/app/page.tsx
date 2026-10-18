@@ -15,6 +15,7 @@ import {
   runFullPipeline,
   listTracks,
   TrackMeta,
+  API_BASE,
 } from "@/lib/api";
 import { TrackRadar2D } from "@/components/TrackRadar2D";
 import { TimelineScrubber } from "@/components/TimelineScrubber";
@@ -100,7 +101,7 @@ export default function WorkbenchPage() {
       const sampleMeta = sampleList.find((s) => s.id === sampleId);
       if (sampleMeta && sampleMeta.has_video && sampleMeta.video_path) {
         setHasVideo(true);
-        setVideoSrc(`http://localhost:8000${sampleMeta.video_path}`);
+        setVideoSrc(`${API_BASE}${sampleMeta.video_path}`);
       } else {
         setHasVideo(false);
         setVideoSrc("");
@@ -416,17 +417,41 @@ export default function WorkbenchPage() {
             <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/50 rounded-xl border border-slate-800 p-6 text-center">
               <AlertTriangle className="w-10 h-10 text-amber-400 mb-2" />
               <div className="text-sm font-semibold text-slate-200">
-                No Telemetry Session Loaded
+                {error ? "Backend Connection Error" : "No Telemetry Session Loaded"}
               </div>
-              <div className="text-xs text-slate-400 max-w-sm mt-1">
-                Upload dual car telemetry CSV files or select an authentic sample case from the dropdown.
+              <div className="text-xs text-slate-400 max-w-md mt-1">
+                {error ? (
+                  <span className="text-red-400">
+                    {error}. The frontend cannot reach the ApexGuard API at{" "}
+                    <code className="text-cyan-300 font-mono bg-slate-800 px-1 py-0.5 rounded">
+                      {API_BASE}
+                    </code>
+                    . If deployed on Vercel, ensure the backend is running and{" "}
+                    <code className="text-cyan-300 font-mono bg-slate-800 px-1 py-0.5 rounded">
+                      NEXT_PUBLIC_API_URL
+                    </code>{" "}
+                    is set in Vercel project environment variables.
+                  </span>
+                ) : (
+                  "Upload dual car telemetry CSV files or select an authentic sample case from the dropdown."
+                )}
               </div>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="mt-4 px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs transition"
-              >
-                Upload Telemetry Files
-              </button>
+              <div className="flex items-center gap-2 mt-4">
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs transition"
+                >
+                  Upload Telemetry Files
+                </button>
+                {error && (
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg text-xs transition border border-slate-700"
+                  >
+                    Retry Connection
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

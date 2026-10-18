@@ -72,7 +72,7 @@ class Settings:
     @property
     def bedrock_model_id(self) -> str:
         reload_env_if_modified()
-        return os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+        return os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
 
     @property
     def has_bedrock_credentials(self) -> bool:
