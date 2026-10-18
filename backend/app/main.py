@@ -65,6 +65,19 @@ class FullReviewResponse(BaseModel):
     bulletin: StewardsBulletin
 
 
+@app.get("/")
+def root_index():
+    """Root health and discovery endpoint."""
+    return {
+        "status": "online",
+        "service": "ApexGuard Engine API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/api/health",
+        "tracks": "/api/tracks",
+    }
+
+
 @app.get("/api/health")
 def health_check():
     """Health check endpoint."""

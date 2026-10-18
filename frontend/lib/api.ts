@@ -9,7 +9,8 @@ import {
   StewardsBulletin,
 } from "./types";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const rawBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = rawBase.replace(/\/+$/, "");
 
 export interface TrackMeta {
   track_id: string;
