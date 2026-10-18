@@ -1,0 +1,269 @@
+[
+  {
+    "track_id": "austin",
+    "track_name": "Circuit of the Americas (Austin)",
+    "country": "USA",
+    "total_length_m": 5502.54,
+    "aliases": [
+      "austin",
+      "cota",
+      "united_states",
+      "usa"
+    ]
+  },
+  {
+    "track_id": "brands_hatch",
+    "track_name": "Brands Hatch Circuit",
+    "country": "Great Britain",
+    "total_length_m": 3899.51,
+    "aliases": [
+      "brands_hatch",
+      "brands"
+    ]
+  },
+  {
+    "track_id": "budapest",
+    "track_name": "Hungaroring (Budapest)",
+    "country": "Hungary",
+    "total_length_m": 4371.86,
+    "aliases": [
+      "budapest",
+      "hungaroring",
+      "hungary"
+    ]
+  },
+  {
+    "track_id": "catalunya",
+    "track_name": "Circuit de Barcelona-Catalunya",
+    "country": "Spain",
+    "total_length_m": 4644.84,
+    "aliases": [
+      "catalunya",
+      "barcelona",
+      "spain"
+    ]
+  },
+  {
+    "track_id": "hockenheim",
+    "track_name": "Hockenheimring",
+    "country": "Germany",
+    "total_length_m": 4564.2,
+    "aliases": [
+      "hockenheim",
+      "hockenheimring",
+      "germany"
+    ]
+  },
+  {
+    "track_id": "ims",
+    "track_name": "Indianapolis Motor Speedway",
+    "country": "USA",
+    "total_length_m": 4017.29,
+    "aliases": [
+      "ims",
+      "indianapolis",
+      "indy"
+    ]
+  },
+  {
+    "track_id": "melbourne",
+    "track_name": "Albert Park Circuit (Melbourne)",
+    "country": "Australia",
+    "total_length_m": 5293.73,
+    "aliases": [
+      "melbourne",
+      "albert_park",
+      "australia"
+    ]
+  },
+  {
+    "track_id": "mexico_city",
+    "track_name": "Autódromo Hermanos Rodríguez (Mexico City)",
+    "country": "Mexico",
+    "total_length_m": 4292.2,
+    "aliases": [
+      "mexicocity",
+      "mexico_city",
+      "hermanos_rodriguez",
+      "mexico"
+    ]
+  },
+  {
+    "track_id": "montreal",
+    "track_name": "Circuit Gilles Villeneuve (Montreal)",
+    "country": "Canada",
+    "total_length_m": 4352.51,
+    "aliases": [
+      "montreal",
+      "gilles_villeneuve",
+      "canada"
+    ]
+  },
+  {
+    "track_id": "monza",
+    "track_name": "Autodromo Nazionale Monza",
+    "country": "Italy",
+    "total_length_m": 5785.2,
+    "aliases": [
+      "monza",
+      "italy"
+    ]
+  },
+  {
+    "track_id": "moscow_raceway",
+    "track_name": "Moscow Raceway",
+    "country": "Russia",
+    "total_length_m": 4058.28,
+    "aliases": [
+      "moscow",
+      "moscow_raceway",
+      "russia"
+    ]
+  },
+  {
+    "track_id": "norisring",
+    "track_name": "Norisring",
+    "country": "Germany",
+    "total_length_m": 2290.75,
+    "aliases": [
+      "norisring"
+    ]
+  },
+  {
+    "track_id": "nuerburgring",
+    "track_name": "Nürburgring",
+    "country": "Germany",
+    "total_length_m": 5139.1,
+    "aliases": [
+      "nuerburgring",
+      "nurburgring"
+    ]
+  },
+  {
+    "track_id": "oschersleben",
+    "track_name": "Motorsport Arena Oschersleben",
+    "country": "Germany",
+    "total_length_m": 3687.31,
+    "aliases": [
+      "oschersleben"
+    ]
+  },
+  {
+    "track_id": "sakhir",
+    "track_name": "Bahrain International Circuit (Sakhir)",
+    "country": "Bahrain",
+    "total_length_m": 5400.75,
+    "aliases": [
+      "sakhir",
+      "bahrain"
+    ]
+  },
+  {
+    "track_id": "sao_paulo",
+    "track_name": "Autódromo José Carlos Pace (Interlagos)",
+    "country": "Brazil",
+    "total_length_m": 4299.62,
+    "aliases": [
+      "saopaulo",
+      "sao_paulo",
+      "interlagos",
+      "brazil"
+    ]
+  },
+  {
+    "track_id": "sepang",
+    "track_name": "Sepang International Circuit",
+    "country": "Malaysia",
+    "total_length_m": 5532.35,
+    "aliases": [
+      "sepang",
+      "malaysia"
+    ]
+  },
+  {
+    "track_id": "shanghai",
+    "track_name": "Shanghai International Circuit",
+    "country": "China",
+    "total_length_m": 5440.25,
+    "aliases": [
+      "shanghai",
+      "china"
+    ]
+  },
+  {
+    "track_id": "silverstone",
+    "track_name": "Silverstone Circuit",
+    "country": "Great Britain",
+    "total_length_m": 5881.8,
+    "aliases": [
+      "silverstone",
+      "great_britain",
+      "uk"
+    ]
+  },
+  {
+    "track_id": "sochi",
+    "track_name": "Sochi Autodrom",
+    "country": "Russia",
+    "total_length_m": 5836.09,
+    "aliases": [
+      "sochi",
+      "russia"
+    ]
+  },
+  {
+    "track_id": "spa",
+    "track_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "total_length_m": 6995.05,
+    "aliases": [
+      "spa",
+      "spa_francorchamps",
+      "belgium"
+    ]
+  },
+  {
+    "track_id": "spielberg",
+    "track_name": "Red Bull Ring (Spielberg)",
+    "country": "Austria",
+    "total_length_m": 4310.45,
+    "aliases": [
+      "spielberg",
+      "red_bull_ring",
+      "austria"
+    ]
+  },
+  {
+    "track_id": "suzuka",
+    "track_name": "Suzuka International Racing Course",
+    "country": "Japan",
+    "total_length_m": 5797.88,
+    "aliases": [
+      "suzuka",
+      "japan"
+    ]
+  },
+  {
+    "track_id": "yas_marina",
+    "track_name": "Yas Marina Circuit (Abu Dhabi)",
+    "country": "UAE",
+    "total_length_m": 5541.57,
+    "aliases": [
+      "yasmarina",
+      "yas_marina",
+      "abu_dhabi",
+      "uae"
+    ]
+  },
+  {
+    "track_id": "zandvoort",
+    "track_name": "Circuit Zandvoort",
+    "country": "Netherlands",
+    "total_length_m": 4311.48,
+    "aliases": [
+      "zandvoort",
+      "netherlands",
+      "dutch"
+    ]
+  }
+]

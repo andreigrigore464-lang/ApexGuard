@@ -1,0 +1,48 @@
+{
+  "code_title": "FIA International Sporting Code & Formula One Sporting Regulations",
+  "version": "2026.1",
+  "articles": {
+    "ART_33_3": {
+      "article_id": "Article 33.3",
+      "title": "Causing an Avoidable Collision",
+      "regulatory_reference": "FIA F1 Sporting Regulations Art. 33.3",
+      "description": "At no time may a car be driven unnecessarily slowly, erratically or in a manner which could be deemed potentially dangerous to other drivers. Causing an avoidable collision will result in a judicial penalty.",
+      "standard_penalty": "10-Second Time Penalty and 2 Penalty Points",
+      "thresholds": {
+        "max_along_track_gap_m": 1.0,
+        "max_lateral_gap_m": 1.5,
+        "min_closing_velocity_kmh": 5.0
+      }
+    },
+    "ART_33_4": {
+      "article_id": "Article 33.4",
+      "title": "Failure to Leave Racing Room (Crowding)",
+      "regulatory_reference": "FIA F1 Sporting Regulations Art. 33.4",
+      "description": "Any driver defending a position must leave at least one car width (2.0m) between their car and the edge of the track when an alongside competitor has established significant overlap.",
+      "standard_penalty": "5-Second Time Penalty and 1 Penalty Point",
+      "thresholds": {
+        "min_overlap_ratio": 0.30,
+        "max_lateral_clearance_m": 2.0
+      }
+    },
+    "ART_DRIVING_STANDARDS_APEX": {
+      "article_id": "Driving Standards Guidelines §2.1",
+      "title": "Apex Right of Way & Late Divebomb",
+      "regulatory_reference": "FIA Driving Standards Guidelines §2.1",
+      "description": "In order for a car being overtaken to be required to give room, the attacking car's front axle must be at least alongside the mirror or front axle of the other car prior to turn-in (minimum 50% overlap).",
+      "standard_penalty": "10-Second Time Penalty and 2 Penalty Points",
+      "thresholds": {
+        "required_overlap_ratio": 0.50,
+        "speed_delta_kmh_threshold": 15.0
+      }
+    },
+    "ART_RACING_INCIDENT": {
+      "article_id": "FIA ISC Appendix L Chapter IV §2",
+      "title": "Racing Incident (No Further Action)",
+      "regulatory_reference": "FIA ISC Appendix L Chapter IV Article 2(d)",
+      "description": "If it is established that neither driver was wholly or predominantly to blame for an incident or contact during genuine racing contest, no further action shall be taken.",
+      "standard_penalty": "No Further Action",
+      "thresholds": {}
+    }
+  }
+}
