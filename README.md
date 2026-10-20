@@ -25,30 +25,16 @@ ApexGuard solves this by separating physics calculations, policy evaluation, and
 ## Architecture: Three-Tier Pipeline
 
 ```mermaid
-flowchart TD
-    IN["<b>Raw Telemetry Stream (50–100Hz)</b><br/>GPS (X, Z) Ground Plane • Speed • Brake • Steer Angle • Throttle"]
-    subgraph L1_BOX [" "]
-        L1["<b>LAYER 1: Deterministic Physics Math (NumPy)</b><br/><i>Latency: &lt; 4ms | Cost: $0.00</i><br/>• Front-axle overlap percentage (50% A-pillar line)<br/>• Randy Pobst 'Vortex of Danger' entry detection<br/>• Apex line deviation, lateral closing rates & delta-V"]
-    end
-    subgraph L2_BOX [" "]
-        L2["<b>LAYER 2: Fast Policy Gatekeeper (Strands Decider 2B)</b><br/><i>Latency: ~115ms | Cost: $0.0001</i><br/>• Evaluates IncidentStateVector against active rulebook<br/>• Multi-series threshold checks (FIA F1, SRO GT3, Junior Karting)"]
-    end
-    CLEARED["<b>Triage: Cleared (~80%)</b><br/>• No Further Action (Racing Incident)<br/>• Instant green flag / race continues"]
-    subgraph L3_BOX [" "]
-        L3["<b>LAYER 3: Judicial Legal Steward (Amazon Bedrock)</b><br/><i>Latency: ~1.5s | Cost: On Demand</i><br/>• Regulatory article citation (e.g. FIA ISC App. L, Ch. IV)<br/>• Keyframe telemetry audit trail & culpability determination<br/>• Formal, signed FIA Stewards Decision Bulletin"]
-    end
-    IN -->|"Synchronized Time-Series"| L1
-    L1 -->|"IncidentStateVector"| L2
-    L2 -->|"Benign / Compliant"| CLEARED
-    L2 -->|"Escalated / Disputed"| L3
-    style IN fill:#1a1d24,stroke:#4b5563,stroke-width:1px,color:#e5e7eb
-    style L1 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#e2e8f0
-    style L2 fill:#0f172a,stroke:#8b5cf6,stroke-width:2px,color:#e2e8f0
-    style L3 fill:#0f172a,stroke:#ec4899,stroke-width:2px,color:#e2e8f0
-    style CLEARED fill:#052e16,stroke:#22c55e,stroke-width:1.5px,color:#86efac
-    style L1_BOX fill:transparent,stroke:none
-    style L2_BOX fill:transparent,stroke:none
-    style L3_BOX fill:transparent,stroke:none
+flowchart LR
+    IN["<b>Raw Telemetry</b><br/>50–100Hz (GPS X/Z, inputs)"]
+    L1["<b>Layer 1: Physics Math</b><br/>NumPy (&lt;4ms | $0.00)<br/>Overlap %, Vortex, Line delta"]
+    L2["<b>Layer 2: Policy Gate</b><br/>Strands Decider (~115ms)<br/>Rulebook thresholds"]
+    OK["<b>Cleared (~80%)</b><br/>Racing Incident / Green flag"]
+    L3["<b>Layer 3: Legal Steward</b><br/>Bedrock (~1.5s, on demand)<br/>Signed FIA Stewards Bulletin"]
+    IN --> L1
+    L1 -->|StateVector| L2
+    L2 -->|Benign| OK
+    L2 -->|Escalated| L3
 ```
 
 ### Layer Breakdown
