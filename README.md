@@ -1,3 +1,4 @@
+<img width="1200" height="675" alt="AWS Hackathon" src="https://github.com/user-attachments/assets/ae24e686-8479-486d-a3ec-9e222dbe8ba2" />
 # ApexGuard 🏎️🛡️
 
 > **Deterministic Motorsport Telemetry Incident Review & Rulebook Governance Platform**
