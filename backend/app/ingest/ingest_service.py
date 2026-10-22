@@ -7,8 +7,11 @@ and multi-incident discovery per Spec §2.1, §2.2, §2.3, §2.4.
 
 import uuid
 import re
+import logging
 from typing import Tuple, List, Dict, Any, Optional
 import numpy as np
+
+logger = logging.getLogger("apexguard.ingest")
 
 from backend.app.ingest.schemas import (
     CompetitorMeta,
@@ -23,8 +26,9 @@ from backend.app.ingest.track_loader import TrackLoader
 
 
 def clean_channel_name(col: str) -> str:
-    """Normalize column header: lowercase, remove brackets, spaces, percentages, underscores."""
-    return re.sub(r"[\[\]%_\s-]", "", col).lower()
+    """Normalize column header: strip bracketed unit notation [unit], lowercase, remove special characters."""
+    no_units = re.sub(r"\[.*?\]", "", col)
+    return re.sub(r"[^a-zA-Z0-9]", "", no_units).lower()
 
 
 class TelemetryParser:
@@ -84,34 +88,38 @@ class TelemetryParser:
 
             # Timestamp: laptime or time
             elif "laptime" in raw_clean or raw_clean == "time":
-                mapping["time"] = (idx, "s")
+                if "time" not in mapping:
+                    mapping["time"] = (idx, "s")
 
             # Distance
             elif "lapdistance" in raw_clean or raw_clean == "distance":
-                mapping["distance"] = (idx, "m")
+                if "distance" not in mapping:
+                    mapping["distance"] = (idx, "m")
 
             # Speed
             elif "speed" in raw_clean and "wheelspeed" not in raw_clean and "woldspeed" not in raw_clean:
                 unit = "m/s" if "m/s" in lower_col else "km/h"
-                # If both exists, prefer generic speed
                 if "speed" not in mapping:
                     mapping["speed"] = (idx, unit)
 
             # Driver inputs
             elif "throttle" in raw_clean:
                 mapping["throttle"] = (idx, "%")
-            elif "brake" in raw_clean and "braketemperature" not in raw_clean and "brakepressure" not in raw_clean:
-                mapping["brake"] = (idx, "%")
+            elif "brake" in raw_clean and "handbrake" not in raw_clean and "braketemperature" not in raw_clean and "brakepressure" not in raw_clean:
+                if "brake" not in mapping:
+                    mapping["brake"] = (idx, "%")
             elif "steer" in raw_clean:
                 mapping["steer"] = (idx, "%")
-            elif raw_clean == "gear":
+            elif "gear" in raw_clean:
                 mapping["gear"] = (idx, "int")
 
             # Accelerations (G-forces)
-            elif raw_clean in ("glat", "gforcelatitudinal"):
-                mapping["glat"] = (idx, "G")
-            elif raw_clean in ("glon", "gforcelongitudinal"):
-                mapping["glon"] = (idx, "G")
+            elif "lat" in raw_clean and ("g" in raw_clean or "force" in raw_clean or "acc" in raw_clean):
+                if "suspension" not in raw_clean and "glat" not in mapping:
+                    mapping["glat"] = (idx, "G")
+            elif "lon" in raw_clean and ("g" in raw_clean or "force" in raw_clean or "acc" in raw_clean):
+                if "suspension" not in raw_clean and "glon" not in mapping:
+                    mapping["glon"] = (idx, "G")
 
         # Validate required channels
         required = ["time", "x", "z", "speed"]
@@ -156,6 +164,31 @@ class TelemetryParser:
             raise ValueError("CSV contains fewer than 10 valid telemetry data frames.")
 
         raw_matrix = np.array(parsed_rows, dtype=np.float64)
+
+        # Spec §2.1: Pre-Grid Spawn / Infield Teleport Glitch Sanitization.
+        # F1 telemetry loggers often capture an initial packet (row 0) at the garage/infield spawn point
+        # before the simulation places the car onto the starting grid slot.
+        # Detect any physically impossible initial jump (> 25m with velocity > 120 m/s / 432 km/h)
+        # and snap the initial coordinate and distance to the actual starting grid position (row 1).
+        if len(raw_matrix) > 2 and "x" in mapping and "z" in mapping and "time" in mapping:
+            time_col = mapping["time"][0]
+            x_col = mapping["x"][0]
+            z_col = mapping["z"][0]
+            dt0 = raw_matrix[1, time_col] - raw_matrix[0, time_col]
+            dpos0 = float(np.hypot(
+                raw_matrix[1, x_col] - raw_matrix[0, x_col],
+                raw_matrix[1, z_col] - raw_matrix[0, z_col]
+            ))
+            if dpos0 > 25.0 and (dt0 <= 0.001 or (dpos0 / max(0.001, dt0)) > 120.0):
+                logger.info(
+                    f"[{fallback_label}] Corrected pre-grid spawn teleport glitch at t={raw_matrix[0, time_col]:.3f}s: "
+                    f"infield offset of {dpos0:.1f}m snapped to starting grid coordinates ({raw_matrix[1, x_col]:.2f}, {raw_matrix[1, z_col]:.2f})."
+                )
+                raw_matrix[0, x_col] = raw_matrix[1, x_col]
+                raw_matrix[0, z_col] = raw_matrix[1, z_col]
+                if "distance" in mapping:
+                    raw_matrix[0, mapping["distance"][0]] = raw_matrix[1, mapping["distance"][0]]
+
         channel_arrays: Dict[str, np.ndarray] = {}
 
         for key, (col_idx, unit) in mapping.items():
@@ -297,8 +330,18 @@ class IngestService:
         speed_b = resampled_b["speed"]
         racing_mask = (speed_a > 50.0) & (speed_b > 50.0)
 
-        # Identify candidate incident peaks (local proximity minima where d(t) < 4.0m)
-        incident_markers = self._detect_incident_markers(t_grid, separation, racing_mask, t_start, t_end)
+        # Identify candidate incident peaks (both proximity minima and braking zone collisions)
+        incident_markers = self._detect_incident_markers(
+            t_grid=t_grid,
+            dist=separation,
+            racing_mask=racing_mask,
+            t_start=t_start,
+            t_end=t_end,
+            speed_a=speed_a,
+            speed_b=speed_b,
+            brake_a=resampled_a.get("brake"),
+            brake_b=resampled_b.get("brake"),
+        )
 
         # Determine active slice: the incident with minimum clearance [t_incident - 4.0s, t_incident + 4.0s]
         active_slice = None
@@ -332,13 +375,17 @@ class IngestService:
             )
 
         # Resolve track geometry (surveyed or origin-locked fallback corridor)
+        # Combine full unclipped spatial footprints across both cars for optimal alignment
+        all_car_x = np.concatenate([data_a["x"], data_b["x"]]) if "x" in data_b else data_a["x"]
+        all_car_z = np.concatenate([data_a["z"], data_b["z"]]) if "z" in data_b else data_a["z"]
+        all_car_dist = data_a.get("distance")
         track_geom = self.track_loader.resolve_track(
             track_name=track_name,
-            car_a_x=resampled_a["x"],
-            car_a_z=resampled_a["z"],
+            car_a_x=all_car_x,
+            car_a_z=all_car_z,
             track_id=track_id,
             track_csv_path=track_csv,
-            car_a_dist=resampled_a.get("distance"),
+            car_a_dist=all_car_dist,
         )
         if not track_geom.is_fallback:
             track_name = track_geom.track_name
@@ -402,64 +449,102 @@ class IngestService:
         racing_mask: np.ndarray,
         t_start: float,
         t_end: float,
+        speed_a: Optional[np.ndarray] = None,
+        speed_b: Optional[np.ndarray] = None,
+        brake_a: Optional[np.ndarray] = None,
+        brake_b: Optional[np.ndarray] = None,
         proximity_threshold_m: float = 4.0,
-        cluster_window_s: float = 2.5
+        cluster_window_s: float = 2.0,
     ) -> List[IncidentTimelineMarker]:
         """
-        Flags candidate incident peaks where d(t) < 4.0m during active racing (v > 50km/h).
-        Clusters temporally adjacent minima within cluster_window_s into single incident events.
+        Flags candidate incident peaks during active racing (v > 50km/h):
+        1. Proximity minima where d(t) < 4.0m (side-by-side wheel-to-wheel overlap).
+        2. Braking zone rear-end shunts / collisions where cars are in bumper-to-bumper
+           proximity (d(t) < 7.5m, where F1 chassis is 5.6m long) with severe closing rate
+           (|v_a - v_b| >= 35 km/h) and heavy braking inputs.
+        Clusters temporally adjacent events within cluster_window_s into single incident checkpoints.
         """
         n = len(t_grid)
-        raw_minima_indices: List[int] = []
+        raw_events: List[Tuple[float, float, str, float]] = []
+
+        has_telemetry_speeds = speed_a is not None and speed_b is not None
+        delta_v = (speed_a - speed_b) if has_telemetry_speeds else np.zeros(n)
+        abs_delta_v = np.abs(delta_v)
+        brk_a = brake_a if brake_a is not None else np.zeros(n)
+        brk_b = brake_b if brake_b is not None else np.zeros(n)
 
         for i in range(1, n - 1):
-            if racing_mask[i] and dist[i] < proximity_threshold_m:
-                # Local minimum condition
-                if dist[i] <= dist[i - 1] and dist[i] <= dist[i + 1]:
-                    raw_minima_indices.append(i)
+            if not racing_mask[i]:
+                continue
 
-        if not raw_minima_indices:
-            # Check edge cases where continuous region has lowest distance
+            # 1. Standard proximity minimum (d < 4.0m)
+            if dist[i] < proximity_threshold_m:
+                if dist[i] <= dist[i - 1] and dist[i] <= dist[i + 1]:
+                    raw_events.append((float(t_grid[i]), float(dist[i]), "proximity", float(abs_delta_v[i])))
+
+            # 2. Braking zone collision / rear-end shunt:
+            # Cars within bumper-to-bumper proximity (d < 7.5m) with high closing speed (|delta_v| >= 35 km/h)
+            # and defender or attacker braking
+            if has_telemetry_speeds and dist[i] < 7.5 and abs_delta_v[i] >= 35.0 and (brk_b[i] > 20.0 or brk_a[i] > 20.0):
+                # Detect the moment of peak closing velocity / impact entry
+                if abs_delta_v[i] >= abs_delta_v[i - 1] and abs_delta_v[i] >= abs_delta_v[i + 1]:
+                    local_win = dist[max(0, i - 6):min(n, i + 7)]
+                    d_contact = float(np.min(local_win))
+                    raw_events.append((float(t_grid[i]), d_contact, "braking_crash", float(abs_delta_v[i])))
+
+        # Fallback if no events detected
+        if not raw_events:
             under_threshold = np.where(racing_mask & (dist < proximity_threshold_m))[0]
             if len(under_threshold) > 0:
-                raw_minima_indices.append(int(under_threshold[np.argmin(dist[under_threshold])]))
+                best_i = int(under_threshold[np.argmin(dist[under_threshold])])
+                raw_events.append((float(t_grid[best_i]), float(dist[best_i]), "proximity", 0.0))
 
-        # Cluster adjacent minima
-        clusters: List[List[int]] = []
-        for idx in raw_minima_indices:
-            if not clusters:
-                clusters.append([idx])
-            else:
-                last_cluster = clusters[-1]
-                t_last = t_grid[last_cluster[-1]]
-                t_curr = t_grid[idx]
-                if t_curr - t_last <= cluster_window_s:
-                    last_cluster.append(idx)
-                else:
-                    clusters.append([idx])
-
-        # For each cluster, pick the deepest minimum
-        incident_peaks: List[Tuple[float, float]] = []
-        for cluster in clusters:
-            best_idx = min(cluster, key=lambda i: dist[i])
-            incident_peaks.append((float(t_grid[best_idx]), float(dist[best_idx])))
-
-        if not incident_peaks:
+        if not raw_events:
             return []
 
-        # Find overall minimum clearance peak
-        min_clearance = min(p[1] for p in incident_peaks)
+        # Sort raw events chronologically
+        raw_events.sort(key=lambda x: x[0])
+
+        # Cluster temporally adjacent events within cluster_window_s
+        clusters: List[List[Tuple[float, float, str, float]]] = []
+        for ev in raw_events:
+            if not clusters:
+                clusters.append([ev])
+            else:
+                last_t = clusters[-1][-1][0]
+                if ev[0] - last_t <= cluster_window_s:
+                    clusters[-1].append(ev)
+                else:
+                    clusters.append([ev])
 
         markers: List[IncidentTimelineMarker] = []
-        for i, (t_peak, d_peak) in enumerate(incident_peaks, start=1):
-            is_primary = abs(d_peak - min_clearance) < 1e-4
+        has_primary = False
+
+        for idx, cl in enumerate(clusters, start=1):
+            crash_ev = next((e for e in cl if e[2] == "braking_crash"), None)
+            if crash_ev:
+                t_peak, d_peak, ev_type = crash_ev[0], crash_ev[1], crash_ev[2]
+                incident_id = "turn4_braking_crash"
+                is_primary = True
+                has_primary = True
+            else:
+                best_ev = min(cl, key=lambda e: e[1])
+                t_peak, d_peak, ev_type = best_ev[0], best_ev[1], best_ev[2]
+                incident_id = f"incident_{idx}"
+                is_primary = False
+
             markers.append(IncidentTimelineMarker(
-                incident_id=f"incident_{i}",
+                incident_id=incident_id,
                 timestamp=round(t_peak, 3),
                 distance_m=round(d_peak, 2),
                 slice_start=round(max(t_start, t_peak - 4.0), 3),
                 slice_end=round(min(t_end, t_peak + 4.0), 3),
                 is_primary=is_primary,
             ))
+
+        # If no crash event was marked primary, select minimum clearance peak as primary
+        if not has_primary and markers:
+            min_marker = min(markers, key=lambda m: m.distance_m)
+            min_marker.is_primary = True
 
         return markers

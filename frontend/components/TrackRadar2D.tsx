@@ -62,24 +62,95 @@ export const TrackRadar2D: React.FC<TrackRadar2DProps> = ({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Find active synchronized frame matching currentTime
+  // Stabilized badge/pill screen positions across animation frames
+  const pillSmoothRef = useRef<{
+    a: { u: number; v: number; initialized: boolean };
+    b: { u: number; v: number; initialized: boolean };
+    lastTime: number;
+  }>({
+    a: { u: 0, v: 0, initialized: false },
+    b: { u: 0, v: 0, initialized: false },
+    lastTime: currentTime,
+  });
+
+  // Shortest angular difference interpolation (-PI to +PI)
+  const lerpAngle = (a: number, b: number, t: number) => {
+    let diff = b - a;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    return a + diff * t;
+  };
+
+  // Continuous Sub-Frame LERP: Linearly interpolates between adjacent 20Hz frames for silky 60 FPS gliding
   const getActiveFrame = useCallback((): SynchronizedFrame => {
     const timeline = session.timeline;
     if (!timeline.length) return null as any;
 
-    // Binary search or linear clamp
+    if (currentTime <= timeline[0].t) {
+      return timeline[0];
+    }
+    const lastIdx = timeline.length - 1;
+    if (currentTime >= timeline[lastIdx].t) {
+      return timeline[lastIdx];
+    }
+
+    // Binary search for bracket interval [k, k+1]
     let low = 0;
-    let high = timeline.length - 1;
+    let high = lastIdx;
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      if (timeline[mid].t < currentTime) {
+      if (timeline[mid].t <= currentTime) {
+        if (mid === lastIdx || timeline[mid + 1].t > currentTime) {
+          low = mid;
+          break;
+        }
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    const idx = Math.min(Math.max(0, low), timeline.length - 1);
-    return timeline[idx];
+
+    const k = Math.min(Math.max(0, low), lastIdx - 1);
+    const f0 = timeline[k];
+    const f1 = timeline[k + 1];
+
+    const dt = f1.t - f0.t;
+    const alpha = dt > 0.0001 ? Math.max(0, Math.min(1, (currentTime - f0.t) / dt)) : 0;
+
+    const lerp = (v0: number, v1: number) => v0 + (v1 - v0) * alpha;
+
+    const car_a = {
+      ...f0.car_a,
+      x: lerp(f0.car_a.x, f1.car_a.x),
+      z: lerp(f0.car_a.z, f1.car_a.z),
+      speed_kmh: lerp(f0.car_a.speed_kmh, f1.car_a.speed_kmh),
+      throttle_pct: lerp(f0.car_a.throttle_pct, f1.car_a.throttle_pct),
+      brake_pct: lerp(f0.car_a.brake_pct, f1.car_a.brake_pct),
+      steer_pct: lerp(f0.car_a.steer_pct, f1.car_a.steer_pct),
+      heading_rad: lerpAngle(f0.car_a.heading_rad, f1.car_a.heading_rad, alpha),
+      distance_m: lerp(f0.car_a.distance_m, f1.car_a.distance_m),
+    };
+
+    const car_b = {
+      ...f0.car_b,
+      x: lerp(f0.car_b.x, f1.car_b.x),
+      z: lerp(f0.car_b.z, f1.car_b.z),
+      speed_kmh: lerp(f0.car_b.speed_kmh, f1.car_b.speed_kmh),
+      throttle_pct: lerp(f0.car_b.throttle_pct, f1.car_b.throttle_pct),
+      brake_pct: lerp(f0.car_b.brake_pct, f1.car_b.brake_pct),
+      steer_pct: lerp(f0.car_b.steer_pct, f1.car_b.steer_pct),
+      heading_rad: lerpAngle(f0.car_b.heading_rad, f1.car_b.heading_rad, alpha),
+      distance_m: lerp(f0.car_b.distance_m, f1.car_b.distance_m),
+    };
+
+    const sep = Math.hypot(car_a.x - car_b.x, car_a.z - car_b.z);
+
+    return {
+      t: currentTime,
+      car_a,
+      car_b,
+      separation_m: sep,
+    };
   }, [session, currentTime]);
 
   // World to Canvas coordinate projection
@@ -476,7 +547,7 @@ export const TrackRadar2D: React.FC<TrackRadar2DProps> = ({
     ctx.restore();
   };
 
-  // Spec §4.1.4: Collision-Free Dynamic Driver Labels (Interior/Exterior offset)
+  // Spec §4.1.4: Stabilized Broadcast-Style Driver Labels (Smooth, Linear, Anti-Collision)
   const renderAntiCollisionLabels = (
     ctx: CanvasRenderingContext2D,
     w: number,
@@ -486,70 +557,128 @@ export const TrackRadar2D: React.FC<TrackRadar2DProps> = ({
     const ptA = worldToCanvas(frame.car_a.x, frame.car_a.z, w, h);
     const ptB = worldToCanvas(frame.car_b.x, frame.car_b.z, w, h);
 
-    // Vector from Car A to Car B
+    const smooth = pillSmoothRef.current;
+    // Snap immediately if user jumps scrubber (>0.25s time delta) to avoid sluggish lag
+    const timeJumped = Math.abs(currentTime - smooth.lastTime) > 0.25;
+    smooth.lastTime = currentTime;
+
+    // Stable broadcast-style orientation from car heading
+    const yawA = frame.car_a.heading_rad;
+    const fwdAx = Math.cos(yawA);
+    const fwdAy = Math.sin(yawA);
+    const normAx = -fwdAy;
+    const normAy = fwdAx;
+
+    const yawB = frame.car_b.heading_rad;
+    const fwdBx = Math.cos(yawB);
+    const fwdBy = Math.sin(yawB);
+    const normBx = -fwdBy;
+    const normBy = fwdBx;
+
+    // Relative distance between cars in canvas pixels
     const deltaU = ptB.u - ptA.u;
     const deltaV = ptB.v - ptA.v;
+    const distPx = Math.hypot(deltaU, deltaV) || 1;
+    const carSepNormX = -deltaV / distPx;
+    const carSepNormY = deltaU / distPx;
 
-    // Lateral normal in canvas coordinates (-deltaV, deltaU)
-    const len = Math.hypot(deltaU, deltaV) || 1;
-    const normU = -deltaV / len;
-    const normV = deltaU / len;
+    const backDist = 28;
+    const sideDist = 42;
 
-    // Offset A in negative normal, B in positive normal to prevent overlap
-    const offsetDist = 32;
+    let targetAu: number;
+    let targetAv: number;
+    let targetBu: number;
+    let targetBv: number;
+
+    if (distPx < 85) {
+      // In close proximity / overtaking: push labels away along separation normal to avoid pill collision
+      targetAu = ptA.u - fwdAx * backDist - carSepNormX * sideDist;
+      targetAv = ptA.v - fwdAy * backDist - carSepNormY * sideDist;
+      targetBu = ptB.u - fwdBx * backDist + carSepNormX * sideDist;
+      targetBv = ptB.v - fwdBy * backDist + carSepNormY * sideDist;
+    } else {
+      // Stable diagonal offset behind each car
+      targetAu = ptA.u - fwdAx * backDist + normAx * sideDist;
+      targetAv = ptA.v - fwdAy * backDist + normAy * sideDist;
+      targetBu = ptB.u - fwdBx * backDist - normBx * sideDist;
+      targetBv = ptB.v - fwdBy * backDist - normBy * sideDist;
+    }
+
+    // Apply linear exponential smoothing across animation frames
+    if (!smooth.a.initialized || timeJumped) {
+      smooth.a.u = targetAu;
+      smooth.a.v = targetAv;
+      smooth.a.initialized = true;
+    } else {
+      smooth.a.u += (targetAu - smooth.a.u) * 0.22;
+      smooth.a.v += (targetAv - smooth.a.v) * 0.22;
+    }
+
+    if (!smooth.b.initialized || timeJumped) {
+      smooth.b.u = targetBu;
+      smooth.b.v = targetBv;
+      smooth.b.initialized = true;
+    } else {
+      smooth.b.u += (targetBu - smooth.b.u) * 0.22;
+      smooth.b.v += (targetBv - smooth.b.v) * 0.22;
+    }
 
     const drawPill = (
       carCenter: { u: number; v: number },
-      offsetSign: number,
+      pillCenter: { u: number; v: number },
       driverName: string,
-      carInfo: string,
       speedKmh: number,
       color: string
     ) => {
-      const pillU = carCenter.u + normU * offsetDist * offsetSign;
-      const pillV = carCenter.v + normV * offsetDist * offsetSign;
-
-      // Leader line
+      // 1. Leader Line
       ctx.beginPath();
       ctx.moveTo(carCenter.u, carCenter.v);
-      ctx.lineTo(pillU, pillV);
-      ctx.strokeStyle = `${color}88`;
-      ctx.lineWidth = 1;
+      ctx.lineTo(pillCenter.u, pillCenter.v);
+      ctx.strokeStyle = `${color}99`;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 2]);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      const text = `${driverName} | ${speedKmh.toFixed(0)} km/h`;
+      // Anchor dot at car center
+      ctx.beginPath();
+      ctx.arc(carCenter.u, carCenter.v, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // 2. High-Readability Glassmorphic Pill
+      const text = `${driverName}  ${Math.round(speedKmh)} km/h`;
       ctx.font = "bold 10px JetBrains Mono, monospace";
       const metrics = ctx.measureText(text);
-      const pillW = metrics.width + 12;
-      const pillH = 18;
+      const pillW = metrics.width + 14;
+      const pillH = 20;
 
       ctx.beginPath();
-      ctx.roundRect(pillU - pillW / 2, pillV - pillH / 2, pillW, pillH, 4);
-      ctx.fillStyle = "rgba(15, 23, 42, 0.92)"; // Dark glass
+      ctx.roundRect(pillCenter.u - pillW / 2, pillCenter.v - pillH / 2, pillW, pillH, 5);
+      ctx.fillStyle = "rgba(11, 15, 25, 0.94)";
       ctx.fill();
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
 
+      // 3. Driver & Speed Text
       ctx.fillStyle = "#F8FAFC";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(text, pillU, pillV);
+      ctx.fillText(text, pillCenter.u, pillCenter.v);
     };
 
     drawPill(
       ptA,
-      -1,
+      smooth.a,
       session.competitor_a.driver,
-      session.competitor_a.car,
       frame.car_a.speed_kmh,
       carAColor
     );
     drawPill(
       ptB,
-      1,
+      smooth.b,
       session.competitor_b.driver,
-      session.competitor_b.car,
       frame.car_b.speed_kmh,
       carBColor
     );

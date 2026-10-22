@@ -82,7 +82,18 @@ def compute_kinematics(
 
     # Euclidean separation
     sep = np.hypot(xa - xb, za - zb)
-    min_idx = int(np.argmin(sep))
+
+    # Locate peak encounter index: search within local neighborhood of target_timestamp if specified
+    if target_timestamp is not None:
+        local_mask = np.abs(ts - target_timestamp) <= 0.25
+        local_indices = np.where(local_mask)[0]
+        if len(local_indices) > 0:
+            min_idx = int(local_indices[np.argmin(sep[local_indices])])
+        else:
+            min_idx = int(np.argmin(sep))
+    else:
+        min_idx = int(np.argmin(sep))
+
     peak_t = float(ts[min_idx])
     min_sep = float(sep[min_idx])
 
@@ -136,60 +147,83 @@ def compute_kinematics(
     # When attacker is catching defender, def_dist - att_dist shrinks, so rate of closure is negative derivative
     dist_delta = def_dist - att_dist
     v_close_series = -np.gradient(dist_delta, ts) * 3.6  # convert m/s to km/h
-    # Smooth closing velocity
-    closing_v = float(np.mean(v_close_series[max(0, min_idx - 3):min_idx + 1]))
+    approach_indices = list(range(max(0, min_idx - 8), min_idx + 1))
+    peak_approach_closing_v = float(np.max(v_close_series[approach_indices])) if len(approach_indices) > 0 else 0.0
+    closing_v = max(float(np.mean(v_close_series[max(0, min_idx - 3):min_idx + 1])), peak_approach_closing_v)
+
+    # Relative speed in approach vs at minimum clearance
+    approach_delta_v = float(np.max(att_v[approach_indices] - def_v[approach_indices])) if len(approach_indices) > 0 else 0.0
 
     # 2. Relative Lateral Convergence (Squeeze Rate): v_lat = -d/dt(lateral_clearance)
     v_lat_series = -np.gradient(lateral_gap, ts)  # in m/s
     v_lat = float(np.max(v_lat_series[max(0, min_idx - 5):min_idx + 2]))
 
     # 4. Contact Detection:
-    # Chassis boundary breach (<2.0m) or G-force vector spike (sudden d/dt impulse)
+    # Chassis boundary breach (<2.0m for side-by-side, or bumper contact where along_track_gap <= 5.8m and in-line with closing_v > 20)
+    # or G-force vector spike (sudden d/dt impulse or speed drop jerk > 2.5)
+    speed_jerk_a = np.abs(np.gradient(np.gradient(va, ts), ts)) / 9.81
+    speed_jerk_b = np.abs(np.gradient(np.gradient(vb, ts), ts)) / 9.81
     jerk_a = np.hypot(np.gradient(g_lata, ts), np.gradient(g_lona, ts))
     jerk_b = np.hypot(np.gradient(g_latb, ts), np.gradient(g_lonb, ts))
-    peak_jerk = float(max(np.max(jerk_a), np.max(jerk_b)))
+    peak_jerk = float(max(np.max(jerk_a), np.max(jerk_b), np.max(speed_jerk_a), np.max(speed_jerk_b)))
 
-    chassis_breach = min_sep < 2.0
+    peak_along_gap = float(along_track_gap[min_idx])
+    peak_lat_gap = float(lateral_gap[min_idx])
+    bumper_gap = max(0.0, peak_along_gap - CHASSIS_LENGTH_M)
+    is_in_line = peak_lat_gap < 1.8
+
+    chassis_breach = min_sep < 2.0 or (min_sep <= 5.8 and is_in_line and peak_along_gap <= 5.8 and (closing_v >= 20.0 or approach_delta_v >= 30.0))
     g_spike = peak_jerk > 2.5
     has_contact = bool(chassis_breach or g_spike)
 
     contact_time = None
     if has_contact:
-        contact_indices = np.where((sep < 2.0) | (jerk_a > 2.5) | (jerk_b > 2.5))[0]
+        contact_indices = np.where((sep < 2.0) | (jerk_a > 2.5) | (jerk_b > 2.5) | ((sep <= 5.8) & (lateral_gap < 1.8)))[0]
         if len(contact_indices) > 0:
             contact_time = float(ts[contact_indices[0]])
         else:
             contact_time = peak_t
 
-    # Speed at peak
+    # Speed at peak (or peak approach delta if closing on braking zone)
     speed_att = float(att_v[min_idx])
     speed_def = float(def_v[min_idx])
-    delta_v = float(speed_att - speed_def)
-    peak_along_gap = float(along_track_gap[min_idx])
-    peak_lat_gap = float(lateral_gap[min_idx])
+    delta_v = float(max(speed_att - speed_def, approach_delta_v))
 
     # Categorization per Spec §6:
-    # 1. REAR_END_SHUNT: along-track gap < 1.0m & lateral gap < 1.5m
-    # 2. APEX_DIVEBOMB: overlap < 50% & high approach speed delta (>15 km/h)
+    # 1. APEX_DIVEBOMB: rapid lateral convergence into apex (>2.0 m/s) with high closing/approach delta (>15 km/h) or lunging from inside line
+    # 2. REAR_END_SHUNT: along-track gap < 1.0m & lateral gap < 1.5m, in-line nose-to-tail closing violently on braking zone
     # 3. CROWD_SQUEEZE: overlap >= 30% & lateral room closing < 2.0m
     # 4. RACING_INCIDENT: otherwise
     categorization = "RACING_INCIDENT"
     severity = 0.2
 
-    bumper_gap = max(0.0, peak_along_gap - CHASSIS_LENGTH_M)
-    is_in_line = peak_lat_gap < 1.5
+    is_divebomb = (
+        (closing_v >= 15.0 or delta_v >= 15.0 or approach_delta_v >= 20.0)
+        and (v_lat >= 2.0 or (peak_along_gap < CHASSIS_LENGTH_M and overlap_peak >= 0.20 and (v_lat > 1.0 or approach_delta_v >= 15.0)))
+        and min_sep <= 3.5
+        and not (overlap_peak < 0.15 and is_in_line and v_lat < 1.5)
+    )
 
-    if (peak_along_gap < 1.0 and is_in_line) or (is_in_line and bumper_gap < 1.0 and closing_v > 0):
-        categorization = "REAR_END_SHUNT"
-        severity = 0.9 if has_contact else 0.75
-    elif overlap_peak < 0.50 and delta_v > 15.0 and min_sep < 3.0:
+    is_rear_shunt = (
+        not is_divebomb
+        and (
+            (peak_along_gap < 1.0 and is_in_line)
+            or (is_in_line and bumper_gap < 1.0 and closing_v > 0)
+            or (is_in_line and peak_along_gap <= 5.8 and overlap_peak < 0.25 and (closing_v >= 25.0 or approach_delta_v >= 30.0 or has_contact))
+        )
+    )
+
+    if is_divebomb:
         categorization = "APEX_DIVEBOMB"
-        severity = 0.85 if has_contact else 0.65
+        severity = 0.85 if has_contact else 0.70
+    elif is_rear_shunt:
+        categorization = "REAR_END_SHUNT"
+        severity = 0.95 if has_contact else 0.85
     elif overlap_peak >= 0.30 and peak_lat_gap < 2.0 and v_lat > 0.4:
         categorization = "CROWD_SQUEEZE"
         severity = 0.75 if has_contact else 0.5
     elif has_contact and min_sep < 2.0:
-        if is_in_line:
+        if is_in_line and overlap_peak < 0.25:
             categorization = "REAR_END_SHUNT"
             severity = 0.85
         elif overlap_peak >= 0.50:

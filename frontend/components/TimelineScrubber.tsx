@@ -22,6 +22,10 @@ interface TimelineScrubberProps {
   session: SessionState;
   currentTime: number;
   onTimeChange: (time: number) => void;
+  isPlaying?: boolean;
+  onPlayChange?: (playing: boolean) => void;
+  playbackSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
   carAColor?: string;
   carBColor?: string;
   className?: string;
@@ -31,12 +35,38 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   session,
   currentTime,
   onTimeChange,
+  isPlaying: controlledIsPlaying,
+  onPlayChange,
+  playbackSpeed: controlledSpeed,
+  onSpeedChange,
   carAColor = "#06B6D4",
   carBColor = "#F43F5E",
   className = "",
 }) => {
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
+  const [internalIsPlaying, setInternalIsPlaying] = useState<boolean>(false);
+  const [internalSpeed, setInternalSpeed] = useState<number>(1.0);
+
+  const isPlaying =
+    controlledIsPlaying !== undefined ? controlledIsPlaying : internalIsPlaying;
+  const setIsPlaying = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === "function" ? val(isPlaying) : val;
+    if (onPlayChange) {
+      onPlayChange(nextVal);
+    } else {
+      setInternalIsPlaying(nextVal);
+    }
+  };
+
+  const playbackSpeed =
+    controlledSpeed !== undefined ? controlledSpeed : internalSpeed;
+  const setPlaybackSpeed = (val: number | ((prev: number) => number)) => {
+    const nextVal = typeof val === "function" ? val(playbackSpeed) : val;
+    if (onSpeedChange) {
+      onSpeedChange(nextVal);
+    } else {
+      setInternalSpeed(nextVal);
+    }
+  };
 
   const timeline = session.timeline;
   const tMin = timeline.length ? timeline[0].t : 0;
@@ -241,7 +271,7 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
       {/* Main Interactive Trackbar & Incident Markers */}
       <div className="relative flex flex-col gap-1.5">
         <div className="relative w-full h-7 flex items-center">
-          {/* Custom track slider */}
+          {/* Interactive Range Input with Dynamic Real-Time Fill & Custom Styled Thumb */}
           <input
             type="range"
             min={tMin}
@@ -249,37 +279,45 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
             step={0.05}
             value={currentTime}
             onChange={handleSliderChange}
-            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400 z-10"
+            style={{
+              background: `linear-gradient(to right, #06B6D4 0%, #06B6D4 ${progressPct}%, rgba(51, 65, 85, 0.85) ${progressPct}%, rgba(51, 65, 85, 0.85) 100%)`,
+            }}
+            className="timeline-slider w-full h-2 rounded-lg cursor-pointer z-10 border border-slate-600/70 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
           />
 
-          {/* Incident Proximity Peak Markers (<4.0m) */}
+          {/* Incident Proximity Peak Markers (<4.0m & Braking Crashes) */}
           {session.incident_markers.map((marker) => {
             const markerPosPct =
               ((marker.timestamp - tMin) / totalDuration) * 100;
+            const isCrash = marker.incident_id === "turn4_braking_crash";
             return (
               <button
                 key={marker.incident_id}
                 type="button"
                 onClick={() => jumpToIncident(marker)}
-                className="absolute top-0 transform -translate-x-1/2 w-3.5 h-7 flex flex-col items-center justify-center group z-20 transition"
+                className="absolute top-0 transform -translate-x-1/2 w-4 h-7 flex flex-col items-center justify-center group z-20 transition"
                 style={{ left: `${markerPosPct}%` }}
-                title={`${marker.incident_id}: ${marker.distance_m}m clearance at t=${marker.timestamp}s`}
+                title={`${isCrash ? "Turn 4 Braking Crash" : marker.incident_id}: ${marker.distance_m}m clearance at t=${marker.timestamp}s`}
               >
                 <div
-                  className={`w-2.5 h-2.5 rounded-full border ${
-                    marker.is_primary
-                      ? "bg-red-500 border-white ring-2 ring-red-500/40"
-                      : "bg-amber-400 border-slate-900"
-                  } shadow-md group-hover:scale-125 transition-transform`}
+                  className={`rounded-full border transition-transform ${
+                    isCrash
+                      ? "w-3 h-3 bg-red-600 border-white ring-4 ring-red-500/60 animate-pulse shadow-red-500/50 shadow-lg"
+                      : marker.is_primary
+                      ? "w-2.5 h-2.5 bg-red-500 border-white ring-2 ring-red-500/40 shadow-md"
+                      : "w-2.5 h-2.5 bg-amber-400 border-slate-900 shadow-md"
+                  } group-hover:scale-125`}
                 />
-                <div className="w-[1.5px] h-3 bg-amber-400/60 mt-0.5" />
+                <div className={`w-[1.5px] h-3 mt-0.5 ${isCrash ? "bg-red-500 shadow-sm" : "bg-amber-400/60"}`} />
 
                 {/* Tooltip on hover */}
                 <div className="absolute bottom-8 hidden group-hover:flex flex-col items-center bg-slate-900 text-slate-100 text-[10px] font-mono px-2 py-1 rounded shadow-xl border border-slate-700 whitespace-nowrap z-30">
-                  <span className="font-semibold text-amber-300">
-                    {marker.incident_id.toUpperCase()} ({marker.distance_m}m)
+                  <span className={`font-semibold ${isCrash ? "text-red-400 font-bold" : "text-amber-300"}`}>
+                    {isCrash ? "💥 TURN 4 BRAKING CRASH" : marker.incident_id.toUpperCase()} ({marker.distance_m}m)
                   </span>
-                  <span className="text-slate-400">{marker.timestamp.toFixed(2)}s</span>
+                  <span className="text-slate-400">
+                    {marker.timestamp.toFixed(2)}s {isCrash ? "• Rear-End Impact (Δv ≈ 50 km/h)" : ""}
+                  </span>
                 </div>
               </button>
             );
@@ -349,20 +387,28 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
         {/* Incident Quick Jump Badges */}
         <div className="hidden sm:flex items-center gap-1.5 text-xs">
           <span className="text-[10px] text-slate-400 font-mono">INCIDENTS:</span>
-          {session.incident_markers.map((m, idx) => (
-            <button
-              key={m.incident_id || idx}
-              type="button"
-              onClick={() => jumpToIncident(m)}
-              className={`px-2 py-0.5 rounded text-[10px] font-mono border transition ${
-                Math.abs(currentTime - m.timestamp) < 0.1
-                  ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                  : "bg-slate-800/40 text-slate-400 border-slate-700/60 hover:text-slate-200"
-              }`}
-            >
-              <span>#{idx + 1} ({m.distance_m}m)</span>
-            </button>
-          ))}
+          {session.incident_markers.map((m, idx) => {
+            const isCrash = m.incident_id === "turn4_braking_crash";
+            const isActive = Math.abs(currentTime - m.timestamp) < 0.1;
+            return (
+              <button
+                key={m.incident_id || idx}
+                type="button"
+                onClick={() => jumpToIncident(m)}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono border transition flex items-center gap-1 ${
+                  isActive
+                    ? isCrash
+                      ? "bg-red-500/30 text-red-200 border-red-500 font-bold ring-1 ring-red-400/50 shadow-sm shadow-red-500/40"
+                      : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                    : isCrash
+                    ? "bg-red-950/50 text-red-300 border-red-700/70 hover:bg-red-900/40 hover:text-red-200 font-semibold"
+                    : "bg-slate-800/40 text-slate-400 border-slate-700/60 hover:text-slate-200"
+                }`}
+              >
+                <span>{isCrash ? "💥 T4 CRASH" : `#${idx + 1}`} ({m.distance_m}m)</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Playback Speed Toggles */}

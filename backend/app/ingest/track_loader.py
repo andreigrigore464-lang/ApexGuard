@@ -267,34 +267,74 @@ class TrackLoader:
         """
         Translates surveyed track coordinates so that its geometric origin
         and path align precisely with the F1 25 world coordinates of the car telemetry.
-        Formula:
-          shift_x = (min(car_x) + max(car_x))/2 - (min(track_x) + max(track_x))/2
-          shift_z = (min(car_z) + max(car_z))/2 - (min(track_z) + max(track_z))/2
-          X_aligned = track_x + shift_x,  Z_aligned = track_z + shift_z
+        Evaluates candidate translations (lap distance, bounding box, t=0 origin) and
+        refines using pure-numpy multi-resolution coordinate descent to minimize
+        distance between the car trajectory and the track centerline.
         """
         tx = np.array([p.x for p in track.centerline], dtype=np.float64)
         tz = np.array([p.z for p in track.centerline], dtype=np.float64)
 
-        car_span_x = float(np.ptp(car_x))
-        car_span_z = float(np.ptp(car_z))
-        track_span_x = float(np.ptp(tx))
-        track_span_z = float(np.ptp(tz))
+        candidates = []
 
-        # Check if telemetry spans a substantial part of the circuit (> 30% of each dimension)
-        if (track_span_x > 0 and track_span_z > 0 and
-                car_span_x > 0.3 * track_span_x and car_span_z > 0.3 * track_span_z):
-            shift_x = float((np.min(car_x) + np.max(car_x)) / 2.0 - (np.min(tx) + np.max(tx)) / 2.0)
-            shift_z = float((np.min(car_z) + np.max(car_z)) / 2.0 - (np.min(tz) + np.max(tz)) / 2.0)
-        elif car_dist is not None and len(car_dist) > 0 and float(car_dist[0]) > 0 and track.total_length_m > 0:
+        # Candidate 1: Lap distance reference point if distance channel is available
+        if car_dist is not None and len(car_dist) > 0 and float(car_dist[0]) >= 0 and track.total_length_m > 0:
             step_dists = np.hypot(np.diff(tx), np.diff(tz))
             cum_dist = np.insert(np.cumsum(step_dists), 0, 0.0)
             target_d = float(car_dist[0]) % track.total_length_m
             idx = int(np.argmin(np.abs(cum_dist - target_d)))
-            shift_x = float(car_x[0] - tx[idx])
-            shift_z = float(car_z[0] - tz[idx])
-        else:
-            shift_x = float(car_x[0] - tx[0])
-            shift_z = float(car_z[0] - tz[0])
+            candidates.append((float(car_x[0] - tx[idx]), float(car_z[0] - tz[idx])))
+
+        # Candidate 2: Bounding box midpoint
+        candidates.append((
+            float((np.min(car_x) + np.max(car_x)) / 2.0 - (np.min(tx) + np.max(tx)) / 2.0),
+            float((np.min(car_z) + np.max(car_z)) / 2.0 - (np.min(tz) + np.max(tz)) / 2.0)
+        ))
+
+        # Candidate 3: Origin t=0
+        candidates.append((float(car_x[0] - tx[0]), float(car_z[0] - tz[0])))
+
+        # Spatial evaluation: subsample car and track points
+        step_c = max(1, len(car_x) // 40)
+        scx = car_x[::step_c]
+        scz = car_z[::step_c]
+        step_t = max(1, len(tx) // 300)
+        stx = tx[::step_t]
+        stz = tz[::step_t]
+
+        def eval_loss(sx: float, sz: float) -> float:
+            shifted_cx = scx - sx
+            shifted_cz = scz - sz
+            dx = shifted_cx[:, None] - stx[None, :]
+            dz = shifted_cz[:, None] - stz[None, :]
+            min_sq = np.min(dx * dx + dz * dz, axis=1)
+            return float(np.mean(np.sqrt(min_sq)))
+
+        # Pick candidate with lowest loss
+        best_cand = candidates[0]
+        best_loss = eval_loss(best_cand[0], best_cand[1])
+        for cand in candidates[1:]:
+            l = eval_loss(cand[0], cand[1])
+            if l < best_loss:
+                best_cand = cand
+                best_loss = l
+
+        shift_x, shift_z = float(best_cand[0]), float(best_cand[1])
+        curr_loss = best_loss
+
+        # Multi-resolution coordinate descent refinement
+        for delta in [30.0, 10.0, 3.0, 1.0, 0.25]:
+            improved = True
+            while improved:
+                improved = False
+                for dx, dz in [(-delta, 0.0), (delta, 0.0), (0.0, -delta), (0.0, delta),
+                              (-delta, -delta), (-delta, delta), (delta, -delta), (delta, delta)]:
+                    cand_loss = eval_loss(shift_x + dx, shift_z + dz)
+                    if cand_loss < curr_loss - 1e-4:
+                        shift_x += dx
+                        shift_z += dz
+                        curr_loss = cand_loss
+                        improved = True
+                        break
 
         aligned_centerline = [
             Point2D(x=round(float(p.x + shift_x), 3), z=round(float(p.z + shift_z), 3))

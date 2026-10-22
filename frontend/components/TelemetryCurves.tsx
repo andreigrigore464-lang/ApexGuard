@@ -40,17 +40,17 @@ export const TelemetryCurves: React.FC<TelemetryCurvesProps> = ({
       const f = timeline[i];
       pts.push({
         time: f.t,
-        speedA: Math.round(f.car_a.speed_kmh),
-        speedB: Math.round(f.car_b.speed_kmh),
-        throttleA: Math.round(f.car_a.throttle_pct),
-        throttleB: Math.round(f.car_b.throttle_pct),
-        brakeA: Math.round(f.car_a.brake_pct),
-        brakeB: Math.round(f.car_b.brake_pct),
-        steerA: Math.round(f.car_a.steer_pct),
-        steerB: Math.round(f.car_b.steer_pct),
-        glatA: parseFloat(f.car_a.glat.toFixed(2)),
-        glatB: parseFloat(f.car_b.glat.toFixed(2)),
-        separation: parseFloat(f.separation_m.toFixed(2)),
+        speedA: Math.round(f.car_a?.speed_kmh ?? 0),
+        speedB: Math.round(f.car_b?.speed_kmh ?? 0),
+        throttleA: Math.round(f.car_a?.throttle_pct ?? 0),
+        throttleB: Math.round(f.car_b?.throttle_pct ?? 0),
+        brakeA: Math.round(f.car_a?.brake_pct ?? 0),
+        brakeB: Math.round(f.car_b?.brake_pct ?? 0),
+        steerA: Math.round(f.car_a?.steer_pct ?? 0),
+        steerB: Math.round(f.car_b?.steer_pct ?? 0),
+        glatA: parseFloat((f.car_a?.glat ?? 0).toFixed(2)),
+        glatB: parseFloat((f.car_b?.glat ?? 0).toFixed(2)),
+        separation: parseFloat((f.separation_m ?? 0).toFixed(2)),
       });
     }
     return pts;
@@ -243,6 +243,7 @@ export const TelemetryCurves: React.FC<TelemetryCurvesProps> = ({
               <YAxis
                 domain={["auto", "auto"]}
                 tick={{ fill: "#64748B", fontSize: 10 }}
+                tickFormatter={(val) => `${Number(val) > 0 ? "+" : ""}${Number(val).toFixed(1)}G`}
               />
               <Tooltip
                 contentStyle={{
@@ -252,6 +253,12 @@ export const TelemetryCurves: React.FC<TelemetryCurvesProps> = ({
                   fontSize: 11,
                   fontFamily: "monospace",
                 }}
+                formatter={(val: any) => [`${Number(val) > 0 ? "+" : ""}${Number(val).toFixed(2)} G`]}
+              />
+              <ReferenceLine
+                y={0}
+                stroke="#475569"
+                strokeDasharray="2 2"
               />
               <ReferenceLine
                 x={currentTime}

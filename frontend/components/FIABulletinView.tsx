@@ -207,6 +207,11 @@ export const FIABulletinView: React.FC<FIABulletinViewProps> = ({
                 </div>
               ))}
             </div>
+
+            {/* Nominative Fair Use / Educational Prototype Disclaimer */}
+            <div className="mt-8 pt-4 border-t border-slate-800/40 text-[9px] text-slate-500 font-mono text-center leading-normal">
+              ApexGuard is an independent open-source educational prototype built for the AWS Builder Hackathon. Formula 1, F1, and FIA are registered trademarks of their respective entities and are referenced solely for technical evaluation under nominative fair use.
+            </div>
           </div>
         </div>
       ) : (

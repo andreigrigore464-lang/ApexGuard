@@ -33,9 +33,12 @@ import {
   ChevronDown,
   Layers,
   AlertTriangle,
+  Rows3,
+  Columns3,
 } from "lucide-react";
 
-type ActiveTab = "footage" | "radar" | "curves" | "bulletin";
+type ActiveTab = "review" | "radar" | "curves" | "bulletin";
+type SplitMode = "split-h" | "split-v" | "radar-solo" | "video-solo";
 
 export default function WorkbenchPage() {
   const [session, setSession] = useState<SessionState | null>(null);
@@ -46,10 +49,15 @@ export default function WorkbenchPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Video Footage State
+  // Video Footage & Split Layout State
   const [hasVideo, setHasVideo] = useState<boolean>(false);
   const [videoSrc, setVideoSrc] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<ActiveTab>("radar");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("review");
+  const [splitMode, setSplitMode] = useState<SplitMode>("split-h");
+
+  // Playback synchronization state shared across TimelineScrubber, TrackRadar2D, and BroadcastFootage
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
 
   // Governance Pipeline Results
   const [kinematics, setKinematics] = useState<IncidentStateVector | null>(null);
@@ -102,10 +110,11 @@ export default function WorkbenchPage() {
       if (sampleMeta && sampleMeta.has_video && sampleMeta.video_path) {
         setHasVideo(true);
         setVideoSrc(`${API_BASE}${sampleMeta.video_path}`);
+        if (activeTab === "radar") setActiveTab("review");
       } else {
         setHasVideo(false);
         setVideoSrc("");
-        if (activeTab === "footage") setActiveTab("radar");
+        if (activeTab === "review") setActiveTab("radar");
       }
 
       // Set initial scrubber timestamp to primary active incident
@@ -146,10 +155,11 @@ export default function WorkbenchPage() {
         const objectUrl = URL.createObjectURL(videoFile);
         setHasVideo(true);
         setVideoSrc(objectUrl);
+        if (activeTab === "radar") setActiveTab("review");
       } else {
         setHasVideo(false);
         setVideoSrc("");
-        if (activeTab === "footage") setActiveTab("radar");
+        if (activeTab === "review") setActiveTab("radar");
       }
 
       if (loaded.active_slice) {
@@ -174,19 +184,19 @@ export default function WorkbenchPage() {
   // Synchronized active frame
   const activeFrame = session?.timeline?.length
     ? (() => {
-        let low = 0;
-        let high = session.timeline.length - 1;
-        while (low <= high) {
-          const mid = Math.floor((low + high) / 2);
-          if (session.timeline[mid].t < currentTime) {
-            low = mid + 1;
-          } else {
-            high = mid - 1;
-          }
+      let low = 0;
+      let high = session.timeline.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (session.timeline[mid].t < currentTime) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
-        const idx = Math.min(Math.max(0, low), session.timeline.length - 1);
-        return session.timeline[idx];
-      })()
+      }
+      const idx = Math.min(Math.max(0, low), session.timeline.length - 1);
+      return session.timeline[idx];
+    })()
     : null;
 
   return (
@@ -224,21 +234,19 @@ export default function WorkbenchPage() {
                 {session.track.total_length_m.toFixed(0)}m
               </span>
               <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                  session.track.is_fallback
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border ${session.track.is_fallback
                     ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
                     : "bg-cyan-500/10 text-cyan-300 border-cyan-500/30"
-                }`}
+                  }`}
               >
                 {session.track.is_fallback ? "Fallback Ribbon" : "Surveyed Track"}
               </span>
               {triage && (
                 <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                    triage.decision === "INFRINGEMENT"
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border ${triage.decision === "INFRINGEMENT"
                       ? "bg-red-500/20 text-red-300 border-red-500/30"
                       : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                  }`}
+                    }`}
                 >
                   {triage.decision}
                 </span>
@@ -280,40 +288,33 @@ export default function WorkbenchPage() {
 
       {/* Spec §7.2: Interconnected Modular Tab Navigation */}
       <div className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md px-4 shrink-0">
-        <nav
-          className={`grid gap-1 w-full max-w-4xl mx-auto py-1 ${
-            hasVideo ? "grid-cols-4" : "grid-cols-3"
-          }`}
-        >
-          {/* Conditional Tab 1: Broadcast Footage (Only when hasVideo is true) */}
-          {hasVideo && (
-            <button
-              onClick={() => setActiveTab("footage")}
-              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition ${
-                activeTab === "footage"
-                  ? "bg-slate-800 text-cyan-400 border border-slate-700/80 shadow-md"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
-              }`}
-            >
-              <Tv className="w-4 h-4 text-purple-400" />
-              <span>Broadcast Footage</span>
-            </button>
-          )}
-
-          {/* Tab 2: Forensic Radar 2D */}
+        <nav className="grid grid-cols-3 gap-1 w-full max-w-4xl mx-auto py-1">
+          {/* Tab 1: Forensic Review (Split view when video available, Radar otherwise) */}
           <button
-            onClick={() => setActiveTab("radar")}
+            onClick={() => setActiveTab(hasVideo ? "review" : "radar")}
             className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition ${
-              activeTab === "radar"
+              activeTab === "review" || activeTab === "radar"
                 ? "bg-slate-800 text-cyan-400 border border-slate-700/80 shadow-md"
                 : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
             }`}
           >
-            <Radar className="w-4 h-4 text-cyan-400" />
-            <span>Forensic Radar 2D</span>
+            {hasVideo ? (
+              <>
+                <div className="flex items-center gap-1">
+                  <Tv className="w-3.5 h-3.5 text-purple-400" />
+                  <Radar className="w-3.5 h-3.5 text-cyan-400" />
+                </div>
+                <span>Forensic Review (Split)</span>
+              </>
+            ) : (
+              <>
+                <Radar className="w-4 h-4 text-cyan-400" />
+                <span>Forensic Radar 2D</span>
+              </>
+            )}
           </button>
 
-          {/* Tab 3: Telemetry Studio */}
+          {/* Tab 2: Telemetry Studio */}
           <button
             onClick={() => setActiveTab("curves")}
             className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition ${
@@ -326,7 +327,7 @@ export default function WorkbenchPage() {
             <span>Telemetry Studio</span>
           </button>
 
-          {/* Tab 4: FIA Bulletin */}
+          {/* Tab 3: FIA Bulletin */}
           <button
             onClick={() => setActiveTab("bulletin")}
             className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition ${
@@ -355,27 +356,181 @@ export default function WorkbenchPage() {
             <>
               {/* Dynamic Tab Views */}
               <div className="flex-1 relative min-h-0 overflow-hidden">
-                {activeTab === "footage" && hasVideo && (
-                  <div className="w-full h-full flex items-center justify-center p-2">
-                    <BroadcastFootage
-                      videoSrc={videoSrc}
+                {(activeTab === "review" || activeTab === "radar") &&
+                  (hasVideo ? (
+                    <div className="flex-1 flex flex-col h-full min-h-0 gap-2 overflow-hidden">
+                      {/* Review Mode Control Toolbar */}
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-xl text-xs shrink-0 shadow-lg">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                          </span>
+                          <span className="font-semibold text-slate-200 text-xs">
+                            Incident Forensic Review
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-800/90 px-2 py-0.5 rounded border border-slate-700/60 hidden sm:inline-block">
+                            1:1 Telemetry & Broadcast Sync
+                          </span>
+                        </div>
+
+                        {/* Layout View Switcher Segmented Buttons */}
+                        <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-lg border border-slate-800 text-[11px] font-medium">
+                          <button
+                            type="button"
+                            onClick={() => setSplitMode("split-h")}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+                              splitMode === "split-h"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                            }`}
+                            title="Horizontal Split (Rows: Video Top, Radar Bottom - Preserves full track width)"
+                          >
+                            <Rows3 className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Horizontal Split</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSplitMode("split-v")}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+                              splitMode === "split-v"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                            }`}
+                            title="Vertical Split (Columns: Video Left, Radar Right - Great for widescreen)"
+                          >
+                            <Columns3 className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Vertical Split</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSplitMode("radar-solo")}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+                              splitMode === "radar-solo"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                            }`}
+                            title="Solo Visualizer (Maximize 2D Radar Canvas)"
+                          >
+                            <Radar className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Radar Solo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSplitMode("video-solo")}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition ${
+                              splitMode === "video-solo"
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                            }`}
+                            title="Solo Broadcast Feed (Maximize Video Replay)"
+                          >
+                            <Tv className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Footage Solo</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Active Layout Pane */}
+                      {splitMode === "split-h" && (
+                        <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
+                          {/* Top Pane: Broadcast Footage (approx 38-40% height, full width) */}
+                          <div className="h-[40%] min-h-[220px] max-h-[380px] shrink-0">
+                            <BroadcastFootage
+                              videoSrc={videoSrc}
+                              currentTime={currentTime}
+                              onTimeChange={setCurrentTime}
+                              startTime={session.timeline[0]?.t || 0}
+                              isPlaying={isPlaying}
+                              playbackSpeed={playbackSpeed}
+                              onPlayChange={setIsPlaying}
+                              className="w-full h-full"
+                            />
+                          </div>
+                          {/* Bottom Pane: 2D Track Radar (remaining ~60% height, full width) */}
+                          <div className="flex-1 min-h-[220px]">
+                            <TrackRadar2D
+                              session={session}
+                              currentTime={currentTime}
+                              onTimeChange={setCurrentTime}
+                              carAColor="#06B6D4"
+                              carBColor="#F43F5E"
+                              className="w-full h-full"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {splitMode === "split-v" && (
+                        <div className="flex-1 flex flex-row gap-2 min-h-0 overflow-hidden">
+                          {/* Left Pane: Broadcast Footage (50% width) */}
+                          <div className="w-1/2 min-w-0 h-full">
+                            <BroadcastFootage
+                              videoSrc={videoSrc}
+                              currentTime={currentTime}
+                              onTimeChange={setCurrentTime}
+                              startTime={session.timeline[0]?.t || 0}
+                              isPlaying={isPlaying}
+                              playbackSpeed={playbackSpeed}
+                              onPlayChange={setIsPlaying}
+                              className="w-full h-full"
+                            />
+                          </div>
+                          {/* Right Pane: 2D Track Radar (50% width) */}
+                          <div className="w-1/2 min-w-0 h-full">
+                            <TrackRadar2D
+                              session={session}
+                              currentTime={currentTime}
+                              onTimeChange={setCurrentTime}
+                              carAColor="#06B6D4"
+                              carBColor="#F43F5E"
+                              className="w-full h-full"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {splitMode === "radar-solo" && (
+                        <div className="flex-1 min-h-0">
+                          <TrackRadar2D
+                            session={session}
+                            currentTime={currentTime}
+                            onTimeChange={setCurrentTime}
+                            carAColor="#06B6D4"
+                            carBColor="#F43F5E"
+                            className="w-full h-full"
+                          />
+                        </div>
+                      )}
+
+                      {splitMode === "video-solo" && (
+                        <div className="flex-1 min-h-0">
+                          <BroadcastFootage
+                            videoSrc={videoSrc}
+                            currentTime={currentTime}
+                            onTimeChange={setCurrentTime}
+                            startTime={session.timeline[0]?.t || 0}
+                            isPlaying={isPlaying}
+                            playbackSpeed={playbackSpeed}
+                            onPlayChange={setIsPlaying}
+                            className="w-full h-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <TrackRadar2D
+                      session={session}
                       currentTime={currentTime}
                       onTimeChange={setCurrentTime}
-                      startTime={session.timeline[0]?.t || 0}
-                      className="max-w-4xl w-full"
+                      carAColor="#06B6D4"
+                      carBColor="#F43F5E"
+                      className="w-full h-full"
                     />
-                  </div>
-                )}
-
-                {activeTab === "radar" && (
-                  <TrackRadar2D
-                    session={session}
-                    currentTime={currentTime}
-                    onTimeChange={setCurrentTime}
-                    carAColor="#06B6D4"
-                    carBColor="#F43F5E"
-                  />
-                )}
+                  ))}
 
                 {activeTab === "curves" && (
                   <TelemetryCurves
@@ -408,6 +563,10 @@ export default function WorkbenchPage() {
                   session={session}
                   currentTime={currentTime}
                   onTimeChange={setCurrentTime}
+                  isPlaying={isPlaying}
+                  onPlayChange={setIsPlaying}
+                  playbackSpeed={playbackSpeed}
+                  onSpeedChange={setPlaybackSpeed}
                   carAColor="#06B6D4"
                   carBColor="#F43F5E"
                 />
@@ -467,11 +626,10 @@ export default function WorkbenchPage() {
                     Kinematic Review
                   </div>
                   <span
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
-                      kinematics.categorization === "RACING_INCIDENT"
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${kinematics.categorization === "RACING_INCIDENT"
                         ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                         : "bg-red-500/20 text-red-300 border-red-500/30"
-                    }`}
+                      }`}
                   >
                     {kinematics.categorization}
                   </span>
@@ -498,11 +656,10 @@ export default function WorkbenchPage() {
                   <div className="flex justify-between text-slate-300">
                     <span className="text-slate-500">Min Separation:</span>
                     <span
-                      className={`font-bold ${
-                        kinematics.min_separation_m < 2.0
+                      className={`font-bold ${kinematics.min_separation_m < 2.0
                           ? "text-red-400"
                           : "text-amber-300"
-                      }`}
+                        }`}
                     >
                       {kinematics.min_separation_m.toFixed(2)}m
                     </span>
@@ -557,7 +714,7 @@ export default function WorkbenchPage() {
             <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex-1 flex flex-col">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">
-                  Encounter Peaks (&lt;4.0m)
+                  Encounter & Crash Checkpoints
                 </div>
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.2 rounded border border-amber-500/30">
                   {session.incident_markers.length}
@@ -567,25 +724,33 @@ export default function WorkbenchPage() {
               <div className="space-y-2 overflow-y-auto flex-1 pr-1">
                 {session.incident_markers.map((marker, idx) => {
                   const isActive = Math.abs(currentTime - marker.timestamp) < 0.2;
+                  const isCrash = marker.incident_id === "turn4_braking_crash";
                   return (
                     <div
                       key={marker.incident_id}
                       onClick={() => setCurrentTime(marker.timestamp)}
-                      className={`p-2.5 rounded-lg border cursor-pointer transition ${
-                        isActive
-                          ? "bg-cyan-950/40 border-cyan-500/60 ring-1 ring-cyan-500/30"
+                      className={`p-2.5 rounded-lg border cursor-pointer transition ${isActive
+                          ? isCrash
+                            ? "bg-red-950/50 border-red-500 ring-2 ring-red-500/40"
+                            : "bg-cyan-950/40 border-cyan-500/60 ring-1 ring-cyan-500/30"
+                          : isCrash
+                          ? "bg-red-950/20 border-red-900/60 hover:border-red-600"
                           : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold font-mono text-slate-200">
-                          #{idx + 1} {marker.incident_id.toUpperCase()}
+                        <span className={`text-xs font-bold font-mono ${isCrash ? "text-red-400 flex items-center gap-1" : "text-slate-200"}`}>
+                          {isCrash ? "💥 T4 BRAKING CRASH" : `#${idx + 1} ${marker.incident_id.toUpperCase()}`}
                         </span>
-                        {marker.is_primary && (
+                        {isCrash ? (
+                          <span className="text-[9px] bg-red-600/30 text-red-200 px-1.5 py-0.2 rounded font-mono border border-red-500/60 font-bold animate-pulse">
+                            REAR-END CRASH
+                          </span>
+                        ) : marker.is_primary ? (
                           <span className="text-[9px] bg-red-500/20 text-red-300 px-1.5 py-0.2 rounded font-mono border border-red-500/30">
                             PRIMARY
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="flex items-center justify-between mt-1 text-[11px] font-mono">
                         <span className="text-slate-400">Timestamp:</span>
@@ -594,15 +759,16 @@ export default function WorkbenchPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-slate-400">Clearance:</span>
+                        <span className="text-slate-400">{isCrash ? "Proximity / Δv:" : "Clearance:"}</span>
                         <span
-                          className={`font-bold ${
-                            marker.distance_m < 2.0
+                          className={`font-bold ${isCrash
+                              ? "text-red-400"
+                              : marker.distance_m < 2.0
                               ? "text-red-400"
                               : "text-amber-400"
-                          }`}
+                            }`}
                         >
-                          {marker.distance_m.toFixed(2)} m
+                          {marker.distance_m.toFixed(2)} m {isCrash ? "(Δv ≈ 50 km/h)" : ""}
                         </span>
                       </div>
                     </div>

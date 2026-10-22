@@ -242,31 +242,51 @@ async def prerender_track(
 def list_available_samples():
     """Lists available real test cases from disk per Spec §8."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
+    backend_data_dir = Path(__file__).resolve().parent / "data" / "samples"
     samples = []
     
+    # 1. Interlagos Incident (First Example, per Test Case #2 specs)
     tc2 = workspace_root / "materiale" / "testCases" / "#2"
-    if tc2.exists():
+    backend_interlagos = backend_data_dir / "interlagos"
+    clip2 = workspace_root / "materiale" / "clips" / "2.mp4"
+    backend_clip2 = backend_interlagos / "2.mp4"
+
+    car1_exists = (tc2 / "brazil_R_91.558_ferrari.csv").exists() or (backend_interlagos / "brazil_R_91.558_ferrari.csv").exists()
+    car2_exists = (tc2 / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv").exists() or (backend_interlagos / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv").exists()
+    has_video_interlagos = clip2.exists() or backend_clip2.exists() or (tc2 / "F1 25_2026.10.17-17.29.mp4").exists()
+
+    if car1_exists and car2_exists:
         samples.append({
-            "id": "brazil_turn4",
-            "name": "Brazil Interlagos — Turn 4 Battle",
+            "id": "interlagos_incident",
+            "name": "Interlagos Incident",
             "circuit": "Autódromo José Carlos Pace (Interlagos)",
             "track_id": "sao_paulo",
-            "car_a": "Mercedes (Russell)",
-            "car_b": "Ferrari (Hamilton)",
-            "has_video": (tc2 / "F1 25_2026.10.17-17.29.mp4").exists(),
-            "video_path": "/api/media/brazil",
+            "car_a": "Ferrari (Hamilton)",
+            "car_b": "Ferrari (Leclerc)",
+            "has_video": has_video_interlagos,
+            "video_path": "/api/media/interlagos",
         })
 
+    # 2. Silverstone Circuit (Second Example, per Test Case #1)
     tc1 = workspace_root / "materiale" / "testCases" / "#1"
-    if tc1.exists():
+    backend_silverstone = backend_data_dir / "silverstone"
+    clip1 = workspace_root / "materiale" / "clips" / "1.mp4"
+    clip2_silv = workspace_root / "materiale" / "clips" / "2.mp4"
+    backend_clip1 = backend_silverstone / "1.mp4"
+
+    car1_silv_exists = (tc1 / "silverstone_R_106.522_ferrari.csv").exists() or (backend_silverstone / "silverstone_R_106.522_ferrari.csv").exists()
+    car2_silv_exists = (tc1 / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists() or (backend_silverstone / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists()
+    has_video_silverstone = clip1.exists() or clip2_silv.exists() or backend_clip1.exists() or (tc1 / "F1 25_2026.10.17-16.31.mp4").exists()
+
+    if car1_silv_exists and car2_silv_exists:
         samples.append({
-            "id": "silverstone_battle",
-            "name": "Silverstone Circuit — Opening Lap Encounter",
+            "id": "silverstone_incident",
+            "name": "Silverstone Incident",
             "circuit": "Silverstone Circuit",
             "track_id": "silverstone",
-            "car_a": "McLaren (Norris)",
-            "car_b": "Ferrari (Leclerc)",
-            "has_video": (tc1 / "F1 25_2026.10.17-16.31.mp4").exists(),
+            "car_a": "Ferrari (Hamilton)",
+            "car_b": "McLaren (Norris)",
+            "has_video": has_video_silverstone,
             "video_path": "/api/media/silverstone",
         })
 
@@ -280,17 +300,34 @@ def load_sample_session(sample_id: str):
     Ensures 100% of testing flows through the real ingest pipeline without mock fixtures.
     """
     workspace_root = Path(__file__).resolve().parent.parent.parent
+    backend_data_dir = Path(__file__).resolve().parent / "data" / "samples"
     
     target_track_id: Optional[str] = None
-    if sample_id == "brazil_turn4":
+    if sample_id in ("interlagos_incident", "brazil_turn4", "brazil"):
         tc_dir = workspace_root / "materiale" / "testCases" / "#2"
-        file_a = tc_dir / "brazil_R_90.478_mercedes_rus_L1_2026-10-17_opponent.csv"
-        file_b = tc_dir / "brazil_R_91.558_ferrari.csv"
+        bk_dir = backend_data_dir / "interlagos"
+
+        file_a = tc_dir / "brazil_R_91.558_ferrari.csv"
+        if not file_a.exists():
+            file_a = bk_dir / "brazil_R_91.558_ferrari.csv"
+
+        file_b = tc_dir / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv"
+        if not file_b.exists():
+            file_b = bk_dir / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv"
+
         target_track_id = "sao_paulo"
-    elif sample_id == "silverstone_battle":
+    elif sample_id in ("silverstone_incident", "silverstone_battle", "silverstone", "1"):
         tc_dir = workspace_root / "materiale" / "testCases" / "#1"
-        file_a = tc_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
-        file_b = tc_dir / "silverstone_R_98.030_ferrari_lec_L1_2026-10-17_opponent.csv"
+        bk_dir = backend_data_dir / "silverstone"
+
+        file_a = tc_dir / "silverstone_R_106.522_ferrari.csv"
+        if not file_a.exists():
+            file_a = bk_dir / "silverstone_R_106.522_ferrari.csv"
+
+        file_b = tc_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
+        if not file_b.exists():
+            file_b = bk_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
+
         target_track_id = "silverstone"
     else:
         raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
@@ -305,22 +342,53 @@ def load_sample_session(sample_id: str):
     return ingest_service.process_telemetry(content_a, content_b, track_id=target_track_id)
 
 
-@app.get("/api/media/{case_id}")
+@app.api_route("/api/media/{case_id}", methods=["GET", "HEAD"])
 def stream_incident_video(case_id: str):
     """
     Streams recorded incident MP4 footage for synchronized video playback (Spec §4.2, §7.2).
     """
     from fastapi.responses import FileResponse
     workspace_root = Path(__file__).resolve().parent.parent.parent
+    backend_data_dir = Path(__file__).resolve().parent / "data" / "samples"
 
-    if case_id in ("brazil", "brazil_turn4"):
-        video_path = workspace_root / "materiale" / "testCases" / "#2" / "F1 25_2026.10.17-17.29.mp4"
-    elif case_id in ("silverstone", "silverstone_battle"):
-        video_path = workspace_root / "materiale" / "testCases" / "#1" / "F1 25_2026.10.17-16.31.mp4"
+    video_path = None
+    if case_id in ("interlagos", "interlagos_incident", "brazil", "brazil_turn4"):
+        clip_options = [
+            workspace_root / "materiale" / "clips" / "2.mp4",
+            backend_data_dir / "interlagos" / "2.mp4",
+            workspace_root / "materiale" / "testCases" / "#2" / "F1 25_2026.10.17-17.29.mp4",
+        ]
+        for opt in clip_options:
+            if opt.exists():
+                video_path = opt
+                break
+    elif case_id in ("silverstone", "silverstone_incident", "silverstone_battle", "1"):
+        clip_options = [
+            workspace_root / "materiale" / "clips" / "1.mp4",
+            workspace_root / "materiale" / "clips" / "2.mp4",
+            backend_data_dir / "silverstone" / "1.mp4",
+            backend_data_dir / "silverstone" / "2.mp4",
+            workspace_root / "materiale" / "testCases" / "#1" / "F1 25_2026.10.17-16.31.mp4",
+        ]
+        for opt in clip_options:
+            if opt.exists():
+                video_path = opt
+                break
+    elif case_id == "2":
+        # Direct reference to clip 2
+        clip_options = [
+            workspace_root / "materiale" / "clips" / "2.mp4",
+            backend_data_dir / "interlagos" / "2.mp4",
+            backend_data_dir / "silverstone" / "2.mp4",
+        ]
+        for opt in clip_options:
+            if opt.exists():
+                video_path = opt
+                break
     else:
         raise HTTPException(status_code=404, detail=f"Media case '{case_id}' not found")
 
-    if not video_path.exists():
+    if not video_path or not video_path.exists():
         raise HTTPException(status_code=404, detail="Incident video file not found on disk")
 
     return FileResponse(
