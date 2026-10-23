@@ -148,26 +148,31 @@ export async function runFullPipeline(
   triage: TriageResult;
   bulletin: StewardsBulletin;
 }> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(`${API_BASE}/api/pipeline/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session, incident_id: incidentId }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+  // If local development backend is active, execute live review
+  if (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`${API_BASE}/api/pipeline/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, incident_id: incidentId }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    if (res.ok) {
-      return await res.json();
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("Live pipeline review note (falling back to bundled evaluation):", e);
     }
-  } catch (e) {
-    console.warn("Live pipeline review note (falling back to bundled evaluation):", e);
   }
 
   // Resilient fallback to pre-computed deterministic review
-  const isSilverstone = session.track_name?.toLowerCase().includes("silverstone");
+  const isSilverstone =
+    session.track_name?.toLowerCase().includes("silverstone") ||
+    session.competitor_a?.driver?.includes("NORRIS");
   const fallbackReviewPath = isSilverstone
     ? "/data/silverstone_pipeline.json"
     : "/data/interlagos_pipeline.json";
@@ -182,57 +187,64 @@ export async function runFullPipeline(
 
 export async function listSamples(): Promise<SampleMeta[]> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(`${API_BASE}/api/samples`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+    // Only query backend if targeting local development server with latest code
+    if (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${API_BASE}/api/samples`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    if (res.ok) {
-      const data: SampleMeta[] = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return data.map((s) => ({
-          ...s,
-          has_video: true,
-          video_path:
-            s.video_path && !s.video_path.includes("localhost")
-              ? s.video_path
-              : s.id.includes("silverstone")
+      if (res.ok) {
+        const data: SampleMeta[] = await res.json();
+        // Discard stale legacy IDs from un-updated deployments
+        if (
+          Array.isArray(data) &&
+          data.length > 0 &&
+          !data.some((s) => s.id === "brazil_turn4")
+        ) {
+          return data.map((s) => ({
+            ...s,
+            has_video: true,
+            video_path: s.id.includes("silverstone")
               ? "/clips/silverstone.mp4"
               : "/clips/interlagos.mp4",
-        }));
+          }));
+        }
       }
     }
   } catch (e) {
-    console.warn("Backend /api/samples unavailable; using verified local demo catalogue:", e);
+    console.warn("Local backend /api/samples unavailable; using verified demo catalogue:", e);
   }
   return FALLBACK_SAMPLES;
 }
 
 export async function loadSample(sampleId: string): Promise<SessionState> {
-  // Normalize legacy IDs across backend revisions
   const isSilv =
     sampleId.includes("silverstone") || sampleId === "1";
   const canonicalId = isSilv ? "silverstone_incident" : "interlagos_incident";
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(`${API_BASE}/api/samples/${sampleId}/load`, {
-      method: "POST",
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+  // If local development backend is active, try live ingestion
+  if (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${API_BASE}/api/samples/${sampleId}/load`, {
+        method: "POST",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-    if (res.ok) {
-      return await res.json();
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn(`Local backend load note for '${sampleId}':`, e);
     }
-  } catch (e) {
-    console.warn(`Live telemetry sample loading note for '${sampleId}' (using bundled high-rate session):`, e);
   }
 
-  // Resilient local static 20Hz dataset fallback
+  // Resilient local static 20Hz dataset (zero latency, instant switching)
   const fallbackPath = isSilv
     ? "/data/silverstone_session.json"
     : "/data/interlagos_session.json";
@@ -244,4 +256,5 @@ export async function loadSample(sampleId: string): Promise<SessionState> {
 
   throw new Error(`Failed to load telemetry session for sample '${canonicalId}'`);
 }
+
 

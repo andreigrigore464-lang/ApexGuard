@@ -107,19 +107,7 @@ export default function WorkbenchPage() {
 
       // Check video footage availability & prioritize zero-latency CDN public clips
       const isSilv = sampleId.includes("silverstone") || sampleId === "1";
-      const sampleMeta = sampleList.find((s) => s.id === sampleId);
-      const defaultClip = isSilv ? "/clips/silverstone.mp4" : "/clips/interlagos.mp4";
-
-      let resolvedVideo = defaultClip;
-      if (sampleMeta?.video_path) {
-        if (sampleMeta.video_path.startsWith("/clips/")) {
-          resolvedVideo = sampleMeta.video_path;
-        } else if (sampleMeta.video_path.startsWith("/api/")) {
-          resolvedVideo = `${API_BASE}${sampleMeta.video_path}`;
-        } else {
-          resolvedVideo = sampleMeta.video_path;
-        }
-      }
+      const resolvedVideo = isSilv ? "/clips/silverstone.mp4" : "/clips/interlagos.mp4";
 
       setHasVideo(true);
       setVideoSrc(resolvedVideo);
