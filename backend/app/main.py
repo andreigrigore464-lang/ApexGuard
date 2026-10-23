@@ -279,8 +279,8 @@ def list_available_samples():
     clip2_silv = workspace_root / "materiale" / "clips" / "2.mp4"
     backend_clip1 = backend_silverstone / "1.mp4"
 
-    car1_silv_exists = (tc1 / "silverstone_R_106.522_ferrari.csv").exists() or (backend_silverstone / "silverstone_R_106.522_ferrari.csv").exists()
-    car2_silv_exists = (tc1 / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists() or (backend_silverstone / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists()
+    car1_silv_exists = (tc1 / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists() or (backend_silverstone / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists()
+    car2_silv_exists = (tc1 / "silverstone_R_106.522_ferrari.csv").exists() or (backend_silverstone / "silverstone_R_106.522_ferrari.csv").exists()
     has_video_silverstone = (
         clip1.exists()
         or clip2_silv.exists()
@@ -295,8 +295,8 @@ def list_available_samples():
             "name": "Silverstone Incident",
             "circuit": "Silverstone Circuit",
             "track_id": "silverstone",
-            "car_a": "Ferrari (Hamilton)",
-            "car_b": "McLaren (Norris)",
+            "car_a": "McLaren (Norris)",
+            "car_b": "Ferrari (Hamilton)",
             "has_video": has_video_silverstone,
             "video_path": "/api/media/silverstone",
         })
@@ -331,13 +331,13 @@ def load_sample_session(sample_id: str):
         tc_dir = workspace_root / "materiale" / "testCases" / "#1"
         bk_dir = backend_data_dir / "silverstone"
 
-        file_a = tc_dir / "silverstone_R_106.522_ferrari.csv"
+        file_a = tc_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
         if not file_a.exists():
-            file_a = bk_dir / "silverstone_R_106.522_ferrari.csv"
+            file_a = bk_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
 
-        file_b = tc_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
+        file_b = tc_dir / "silverstone_R_106.522_ferrari.csv"
         if not file_b.exists():
-            file_b = bk_dir / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv"
+            file_b = bk_dir / "silverstone_R_106.522_ferrari.csv"
 
         target_track_id = "silverstone"
     else:
