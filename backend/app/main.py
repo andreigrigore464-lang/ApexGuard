@@ -253,7 +253,12 @@ def list_available_samples():
 
     car1_exists = (tc2 / "brazil_R_91.558_ferrari.csv").exists() or (backend_interlagos / "brazil_R_91.558_ferrari.csv").exists()
     car2_exists = (tc2 / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv").exists() or (backend_interlagos / "brazil_R_93.256_ferrari_lec_L1_2026-10-17_opponent.csv").exists()
-    has_video_interlagos = clip2.exists() or backend_clip2.exists() or (tc2 / "F1 25_2026.10.17-17.29.mp4").exists()
+    has_video_interlagos = (
+        clip2.exists()
+        or backend_clip2.exists()
+        or (tc2 / "F1 25_2026.10.17-17.29.mp4").exists()
+        or (workspace_root / "frontend" / "public" / "clips" / "interlagos.mp4").exists()
+    )
 
     if car1_exists and car2_exists:
         samples.append({
@@ -276,7 +281,13 @@ def list_available_samples():
 
     car1_silv_exists = (tc1 / "silverstone_R_106.522_ferrari.csv").exists() or (backend_silverstone / "silverstone_R_106.522_ferrari.csv").exists()
     car2_silv_exists = (tc1 / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists() or (backend_silverstone / "silverstone_R_94.768_mclaren_nor_L1_2026-10-17_opponent.csv").exists()
-    has_video_silverstone = clip1.exists() or clip2_silv.exists() or backend_clip1.exists() or (tc1 / "F1 25_2026.10.17-16.31.mp4").exists()
+    has_video_silverstone = (
+        clip1.exists()
+        or clip2_silv.exists()
+        or backend_clip1.exists()
+        or (tc1 / "F1 25_2026.10.17-16.31.mp4").exists()
+        or (workspace_root / "frontend" / "public" / "clips" / "silverstone.mp4").exists()
+    )
 
     if car1_silv_exists and car2_silv_exists:
         samples.append({
@@ -354,8 +365,9 @@ def stream_incident_video(case_id: str):
     video_path = None
     if case_id in ("interlagos", "interlagos_incident", "brazil", "brazil_turn4"):
         clip_options = [
-            workspace_root / "materiale" / "clips" / "2.mp4",
+            workspace_root / "frontend" / "public" / "clips" / "interlagos.mp4",
             backend_data_dir / "interlagos" / "2.mp4",
+            workspace_root / "materiale" / "clips" / "2.mp4",
             workspace_root / "materiale" / "testCases" / "#2" / "F1 25_2026.10.17-17.29.mp4",
         ]
         for opt in clip_options:
@@ -364,10 +376,11 @@ def stream_incident_video(case_id: str):
                 break
     elif case_id in ("silverstone", "silverstone_incident", "silverstone_battle", "1"):
         clip_options = [
-            workspace_root / "materiale" / "clips" / "1.mp4",
-            workspace_root / "materiale" / "clips" / "2.mp4",
+            workspace_root / "frontend" / "public" / "clips" / "silverstone.mp4",
             backend_data_dir / "silverstone" / "1.mp4",
             backend_data_dir / "silverstone" / "2.mp4",
+            workspace_root / "materiale" / "clips" / "1.mp4",
+            workspace_root / "materiale" / "clips" / "2.mp4",
             workspace_root / "materiale" / "testCases" / "#1" / "F1 25_2026.10.17-16.31.mp4",
         ]
         for opt in clip_options:
@@ -377,9 +390,10 @@ def stream_incident_video(case_id: str):
     elif case_id == "2":
         # Direct reference to clip 2
         clip_options = [
-            workspace_root / "materiale" / "clips" / "2.mp4",
+            workspace_root / "frontend" / "public" / "clips" / "interlagos.mp4",
             backend_data_dir / "interlagos" / "2.mp4",
             backend_data_dir / "silverstone" / "2.mp4",
+            workspace_root / "materiale" / "clips" / "2.mp4",
         ]
         for opt in clip_options:
             if opt.exists():

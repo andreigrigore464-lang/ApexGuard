@@ -104,9 +104,19 @@ export const BroadcastFootage: React.FC<BroadcastFootageProps> = ({
           src={videoSrc}
           muted={isMuted}
           playsInline
+          preload="auto"
           onLoadedMetadata={() => {
             if (videoRef.current) {
               setDuration(videoRef.current.duration);
+            }
+          }}
+          onError={(e) => {
+            const currentSrc = e.currentTarget.src || "";
+            const isSilv = currentSrc.includes("silverstone") || videoSrc.includes("silverstone");
+            const fallbackSrc = isSilv ? "/clips/silverstone.mp4" : "/clips/interlagos.mp4";
+            if (!currentSrc.endsWith(fallbackSrc)) {
+              console.warn(`Video source ${currentSrc} failed, falling back to ${fallbackSrc}`);
+              e.currentTarget.src = fallbackSrc;
             }
           }}
           className="max-w-full max-h-full w-auto h-auto object-contain select-none"

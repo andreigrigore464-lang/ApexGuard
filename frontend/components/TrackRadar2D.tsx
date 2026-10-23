@@ -73,6 +73,24 @@ export const TrackRadar2D: React.FC<TrackRadar2DProps> = ({
     lastTime: currentTime,
   });
 
+  // Instantly re-center camera and reset badge stabilization when switching circuits/sessions
+  useEffect(() => {
+    if (!session?.track?.origin) return;
+    cameraRef.current.cx = session.track.origin.x;
+    cameraRef.current.cz = session.track.origin.z;
+    cameraRef.current.targetCx = session.track.origin.x;
+    cameraRef.current.targetCz = session.track.origin.z;
+    cameraRef.current.userOffsetU = 0;
+    cameraRef.current.userOffsetV = 0;
+    cameraRef.current.userZoomMultiplier = 1.0;
+    cameraRef.current.autoTrack = true;
+    setAutoTrack(true);
+
+    pillSmoothRef.current.a.initialized = false;
+    pillSmoothRef.current.b.initialized = false;
+    pillSmoothRef.current.lastTime = currentTime;
+  }, [session?.track_name, session?.session_id]);
+
   // Shortest angular difference interpolation (-PI to +PI)
   const lerpAngle = (a: number, b: number, t: number) => {
     let diff = b - a;

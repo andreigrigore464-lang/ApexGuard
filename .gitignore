@@ -54,7 +54,12 @@ yarn-error.log*
 Thumbs.db
 *.log
 
-# Large Media Recordings (>100MB)
+# Large Media Recordings (>100MB) - Raw screen captures and replays
 *.mp4
 *.webm
+
+# Whitelist optimized lightweight web clips & pre-rendered sample fixtures
+!frontend/public/clips/*.mp4
+!backend/app/data/samples/**/*.mp4
+!frontend/public/data/*.json
 
